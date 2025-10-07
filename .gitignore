@@ -1,0 +1,72 @@
+# -----------------------------
+# Python cache / build artifacts
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.so
+*.pyo
+*.pyd
+
+# -----------------------------
+# Virtual environments
+# -----------------------------
+.venv/
+venv/
+env/
+*.env
+
+# -----------------------------
+# IDE / Editor files
+# -----------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------
+# OS-specific junk
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Jupyter / Notebook outputs
+# -----------------------------
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# -----------------------------
+# Data / logs / large results
+# -----------------------------
+*.log
+*.dat
+*.out
+*.tmp
+*.bak
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.mat
+*.csv
+*.tsv
+results/
+output/
+data/
+plots/
+figures/
+
+# -----------------------------
+# Compiled binaries
+# -----------------------------
+*.exe
+*.dll
+*.o
+*.out
+
+# -----------------------------
+# Python packaging
+# -----------------------------
+build/
+dist/
+*.egg-info/
