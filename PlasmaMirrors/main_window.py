@@ -217,12 +217,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_panel.append_line(f"Set speed requested → Address {address}: {new_spd:.6f} {unit}")
         self.req_spd.emit(address, new_spd, unit)
 
-    @QtCore.pyqtSlot()
+    @QtCore.pyqtSlot(int, float, str)
     def _on_request_set_lbound(self, address: int, new_lbound: float, unit: str):
         self.status_panel.append_line(f"Set lower bound requested → Address {address}: {new_lbound:.6f} {unit}")
         self.req_set_lbound.emit(address, new_lbound, unit)
-    
-    @QtCore.pyqtSlot()
+
+    @QtCore.pyqtSlot(int, float, str)
     def _on_request_set_ubound(self, address: int, new_ubound: float, unit: str):
         self.status_panel.append_line(f"Set upper bound requested → Address {address}: {new_ubound:.6f} {unit}")
         self.req_set_ubound.emit(address, new_ubound, unit)
