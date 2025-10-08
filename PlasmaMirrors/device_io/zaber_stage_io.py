@@ -124,9 +124,11 @@ class ZaberStageIO(QtCore.QObject):
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
             if unit == "mm":
-                dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES, timeout=1)
+                # dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES, timeout=1)
+                dev.generic_command_no_response(CommandCode.MOVE_ABSOLUTE, float(target_pos), Units.LENGTH_MILLIMETRES)
             else:
-                dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES, timeout=1)
+                #dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES, timeout=1)
+                dev.generic_command_no_response(CommandCode.MOVE_ABSOLUTE, float(target_pos), Units.ANGLE_DEGREES)
             self._start_waiter(address, unit)
         except Exception as e:
             self.error.emit(f"Move failed: {e}")
