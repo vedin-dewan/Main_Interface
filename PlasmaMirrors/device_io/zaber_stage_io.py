@@ -92,86 +92,73 @@ class ZaberStageIO(QtCore.QObject):
         except Exception as e:
             self.error.emit(f"Read position failed: {e}")
 
-    def _start_waiter(self, address: int, unit: str, homed: bool = False):
-        """Spawn a small worker that waits for the device to go idle, then emits final signals."""
-        def _wait_and_finalize():
-            try:
-                dev = self.conn.get_device(int(address))
-                dev.wait_until_idle()  # this blocks, but in a worker thread now
-                steps = dev.get_position()
-                if unit == "mm": 
-                    pos = dev.get_position(Units.LENGTH_MILLIMETRES)
-                else:
-                    pos = dev.get_position(Units.ANGLE_DEGREES)
-                # push final state
-                self.position.emit(int(address), float(steps), float(pos))
-                if homed:
-                    self.homed.emit(int(address))
-                else:
-                    self.moved.emit(int(address), float(pos))
-            except Exception as e:
-                self.error.emit(f"Wait/finalize failed (addr {address}): {e}")
-            finally:
-                self.moving.emit(int(address), False)
-        threading.Thread(target=_wait_and_finalize, daemon=True).start()
-
-    @QtCore.pyqtSlot(int, float, str)
-    def move_absolute(self, address: int, target_pos: float, unit: str):
-        """Send move and return immediately; do not block the StageIO thread."""
-        self.moving.emit(int(address), True)
-        try:
-            if self.conn is None:
-                self.error.emit("Not connected"); return
-            dev = self.conn.get_device(int(address))
-            if unit == "mm":
-                dev.move_absolute_async(float(target_pos), Units.LENGTH_MILLIMETRES)
-            else:
-                dev.move_absolute_async(float(target_pos), Units.ANGLE_DEGREES)
-            self._start_waiter(address, unit)
-        except Exception as e:
-            self.error.emit(f"Move failed: {e}")
-            self.moving.emit(int(address), False)
+    # def _start_waiter(self, address: int, unit: str, homed: bool = False):
+    #     """Spawn a small worker that waits for the device to go idle, then emits final signals."""
+    #     def _wait_and_finalize():
+    #         try:
+    #             dev = self.conn.get_device(int(address))
+    #             dev.wait_until_idle()  # this blocks, but in a worker thread now
+    #             steps = dev.get_position()
+    #             if unit == "mm": 
+    #                 pos = dev.get_position(Units.LENGTH_MILLIMETRES)
+    #             else:
+    #                 pos = dev.get_position(Units.ANGLE_DEGREES)
+    #             # push final state
+    #             self.position.emit(int(address), float(steps), float(pos))
+    #             if homed:
+    #                 self.homed.emit(int(address))
+    #             else:
+    #                 self.moved.emit(int(address), float(pos))
+    #         except Exception as e:
+    #             self.error.emit(f"Wait/finalize failed (addr {address}): {e}")
+    #         finally:
+    #             self.moving.emit(int(address), False)
+    #     threading.Thread(target=_wait_and_finalize, daemon=True).start()
 
     # @QtCore.pyqtSlot(int, float, str)
     # def move_absolute(self, address: int, target_pos: float, unit: str):
+    #     """Send move and return immediately; do not block the StageIO thread."""
     #     self.moving.emit(int(address), True)
     #     try:
     #         if self.conn is None:
-    #             self.error.emit("Not connected")
-    #             return
+    #             self.error.emit("Not connected"); return
     #         dev = self.conn.get_device(int(address))
-    #         try:
-    #             dev.identify()
-    #         except Exception:
-    #             pass
     #         if unit == "mm":
     #             dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES)
-    #             dev.wait_until_idle()
-    #             steps = dev.get_position()
-    #             pos = dev.get_position(Units.LENGTH_MILLIMETRES)
     #         else:
     #             dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES)
-    #             dev.wait_until_idle()
-    #             steps = dev.get_position()
-    #             pos = dev.get_position(Units.ANGLE_DEGREES)
-    #         self.position.emit(int(address), float(steps), float(pos))
-    #         self.moved.emit(int(address), float(pos))
+    #         self._start_waiter(address, unit)
     #     except Exception as e:
     #         self.error.emit(f"Move failed: {e}")
-    #     finally:
     #         self.moving.emit(int(address), False)
 
-    @QtCore.pyqtSlot(int)
-    def home(self, address: int):
+    @QtCore.pyqtSlot(int, float, str)
+    def move_absolute(self, address: int, target_pos: float, unit: str):
         self.moving.emit(int(address), True)
         try:
             if self.conn is None:
-                self.error.emit("Not connected"); return
+                self.error.emit("Not connected")
+                return
             dev = self.conn.get_device(int(address))
-            dev.home()
-            self._start_waiter(address, "mm",homed=True)  # unit here is only for formatting; you can map by address
+            try:
+                dev.identify()
+            except Exception:
+                pass
+            if unit == "mm":
+                dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES)
+                dev.wait_until_idle()
+                steps = dev.get_position()
+                pos = dev.get_position(Units.LENGTH_MILLIMETRES)
+            else:
+                dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES)
+                dev.wait_until_idle()
+                steps = dev.get_position()
+                pos = dev.get_position(Units.ANGLE_DEGREES)
+            self.position.emit(int(address), float(steps), float(pos))
+            self.moved.emit(int(address), float(pos))
         except Exception as e:
-            self.error.emit(f"Home failed: {e}")
+            self.error.emit(f"Move failed: {e}")
+        finally:
             self.moving.emit(int(address), False)
 
     # @QtCore.pyqtSlot(int)
@@ -182,29 +169,24 @@ class ZaberStageIO(QtCore.QObject):
     #             self.error.emit("Not connected"); return
     #         dev = self.conn.get_device(int(address))
     #         dev.home()
-    #         dev.wait_until_idle()
-    #         self.homed.emit(int(address))
+    #         self._start_waiter(address, "mm",homed=True)  # unit here is only for formatting; you can map by address
     #     except Exception as e:
     #         self.error.emit(f"Home failed: {e}")
-    #     finally:
     #         self.moving.emit(int(address), False)
 
-    @QtCore.pyqtSlot(int, float, str)
-    def move_delta(self, address: int, delta_pos: float, unit: str):
+    @QtCore.pyqtSlot(int)
+    def home(self, address: int):
         self.moving.emit(int(address), True)
         try:
             if self.conn is None:
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
-            if unit == "mm":
-                cur = float(dev.get_position(Units.LENGTH_MILLIMETRES))
-                dev.move_absolute(cur + float(delta_pos), Units.LENGTH_MILLIMETRES)
-            else:
-                cur = float(dev.get_position(Units.ANGLE_DEGREES))
-                dev.move_absolute(cur + float(delta_pos), Units.ANGLE_DEGREES)
-            self._start_waiter(address, unit)
+            dev.home()
+            dev.wait_until_idle()
+            self.homed.emit(int(address))
         except Exception as e:
-            self.error.emit(f"Move delta failed: {e}")
+            self.error.emit(f"Home failed: {e}")
+        finally:
             self.moving.emit(int(address), False)
 
     # @QtCore.pyqtSlot(int, float, str)
@@ -214,32 +196,50 @@ class ZaberStageIO(QtCore.QObject):
     #         if self.conn is None:
     #             self.error.emit("Not connected"); return
     #         dev = self.conn.get_device(int(address))
-    #         try:
-    #             dev.identify()
-    #         except Exception:
-    #             pass
     #         if unit == "mm":
     #             cur = float(dev.get_position(Units.LENGTH_MILLIMETRES))
-    #             target = cur + float(delta_pos)
-    #             dev.move_absolute(target, Units.LENGTH_MILLIMETRES)
-    #             dev.wait_until_idle()
-    #             steps = dev.get_position()
-    #             pos = dev.get_position(Units.LENGTH_MILLIMETRES)
-    #             self.log.emit(f"Address {address} jog {delta_pos:+.6f} mm → {pos:.6f} mm")
+    #             dev.move_absolute(cur + float(delta_pos), Units.LENGTH_MILLIMETRES)
     #         else:
     #             cur = float(dev.get_position(Units.ANGLE_DEGREES))
-    #             target = cur + float(delta_pos)
-    #             dev.move_absolute(target, Units.ANGLE_DEGREES)
-    #             dev.wait_until_idle()
-    #             steps = dev.get_position()
-    #             pos = dev.get_position(Units.ANGLE_DEGREES)
-    #             self.log.emit(f"Address {address} jog {delta_pos:+.2f} deg → {pos:.2f} deg")
-    #         self.position.emit(int(address), float(steps), float(pos))
-    #         self.moved.emit(int(address), float(pos))
+    #             dev.move_absolute(cur + float(delta_pos), Units.ANGLE_DEGREES)
+    #         self._start_waiter(address, unit)
     #     except Exception as e:
     #         self.error.emit(f"Move delta failed: {e}")
-    #     finally:
     #         self.moving.emit(int(address), False)
+
+    @QtCore.pyqtSlot(int, float, str)
+    def move_delta(self, address: int, delta_pos: float, unit: str):
+        self.moving.emit(int(address), True)
+        try:
+            if self.conn is None:
+                self.error.emit("Not connected"); return
+            dev = self.conn.get_device(int(address))
+            try:
+                dev.identify()
+            except Exception:
+                pass
+            if unit == "mm":
+                cur = float(dev.get_position(Units.LENGTH_MILLIMETRES))
+                target = cur + float(delta_pos)
+                dev.move_absolute(target, Units.LENGTH_MILLIMETRES)
+                dev.wait_until_idle()
+                steps = dev.get_position()
+                pos = dev.get_position(Units.LENGTH_MILLIMETRES)
+                self.log.emit(f"Address {address} jog {delta_pos:+.6f} mm → {pos:.6f} mm")
+            else:
+                cur = float(dev.get_position(Units.ANGLE_DEGREES))
+                target = cur + float(delta_pos)
+                dev.move_absolute(target, Units.ANGLE_DEGREES)
+                dev.wait_until_idle()
+                steps = dev.get_position()
+                pos = dev.get_position(Units.ANGLE_DEGREES)
+                self.log.emit(f"Address {address} jog {delta_pos:+.2f} deg → {pos:.2f} deg")
+            self.position.emit(int(address), float(steps), float(pos))
+            self.moved.emit(int(address), float(pos))
+        except Exception as e:
+            self.error.emit(f"Move delta failed: {e}")
+        finally:
+            self.moving.emit(int(address), False)
 
     @QtCore.pyqtSlot(int, str)
     def stop(self, address: int, unit: str):
