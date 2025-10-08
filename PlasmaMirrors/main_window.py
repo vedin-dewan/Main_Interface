@@ -162,7 +162,6 @@ class MainWindow(QtWidgets.QMainWindow):
             row = self.part1.rows[address - 1]
             row.light_green.set_on(is_moving)
 
-
     @QtCore.pyqtSlot(int, float)
     def _on_moved(self, address: int, final_pos: float):
         row = self.part1.rows[address - 1]
