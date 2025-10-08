@@ -303,8 +303,8 @@ class ZaberStageIO(QtCore.QObject):
     #         self.error.emit(f"Stop failed: {e}")
 
 
-    @QtCore.pyqtSlot(int, float)
-    def set_target_speed(self, address: int, new_spd: float, unit):
+    @QtCore.pyqtSlot(int, float, str)
+    def set_target_speed(self, address: int, new_spd: float, unit: str):
         try:
             if self.conn is None:
                 self.error.emit("Not connected")
