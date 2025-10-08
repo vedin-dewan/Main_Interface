@@ -289,7 +289,7 @@ class ZaberStageIO(QtCore.QObject):
                 self.error.emit(f"Get min limit failed: {e}")
                 minpos = 0.0  # fail-safe
             
-            self.log.emit(f"Addr {address}: max limit set to {maxpos:.6f} {unit}")
+            self.log.emit(f"Address {address}: max limit set to {maxpos:.6f} {unit}")
             self.bounds.emit(int(address), float(minpos), float(maxpos))
         except Exception as e:
             self.error.emit(f"Set max limit failed: {e}")

@@ -109,8 +109,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.req_jog.connect(self.stage.move_delta, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_home.connect(self.stage.home, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_spd.connect(self.stage.set_target_speed, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.req_set_lbound.connect(self.stage.set_lower_limit, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.req_set_ubound.connect(self.stage.set_upper_limit, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_stop.connect(self.stage.stop, QtCore.Qt.ConnectionType.QueuedConnection)
 
         #connect each rows red button to the stop function
