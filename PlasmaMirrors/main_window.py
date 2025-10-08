@@ -14,6 +14,8 @@ class MainWindow(QtWidgets.QMainWindow):
     # requests forwarded to I/O worker (queued)
     req_read = QtCore.pyqtSignal(int, str)
     req_bounds = QtCore.pyqtSignal(int, str)
+    req_set_lbound = QtCore.pyqtSignal(int, float, str)
+    req_set_ubound = QtCore.pyqtSignal(int, float, str)
     req_abs  = QtCore.pyqtSignal(int, float, str)
     req_jog  = QtCore.pyqtSignal(int, float, str)
     req_home = QtCore.pyqtSignal(int)
@@ -101,10 +103,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # thread-safe wiring
         self.req_read.connect(self.stage.read_position_speed, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_bounds.connect(self.stage.get_limits, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.req_set_lbound.connect(self.stage.set_lower_limit, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.req_set_ubound.connect(self.stage.set_upper_limit, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_abs.connect(self.stage.move_absolute, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_jog.connect(self.stage.move_delta, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_home.connect(self.stage.home, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_spd.connect(self.stage.set_target_speed, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.req_set_lbound.connect(self.stage.set_lower_limit, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.req_set_ubound.connect(self.stage.set_upper_limit, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_stop.connect(self.stage.stop, QtCore.Qt.ConnectionType.QueuedConnection)
 
         #connect each rows red button to the stop function
@@ -117,6 +123,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.part2.request_home.connect(self._on_request_home)
         self.part2.request_move_delta.connect(self._on_request_move_delta)
         self.part2.request_set_speed.connect(self._on_request_set_speed)
+        self.part2.request_set_lbound.connect(self._on_request_set_lbound)
+        self.part2.request_set_ubound.connect(self._on_request_set_ubound)
 
         # style
         self.setStyleSheet(
@@ -208,6 +216,16 @@ class MainWindow(QtWidgets.QMainWindow):
         unit = self.part1.rows[address - 1].info.speed_unit
         self.status_panel.append_line(f"Set speed requested → Address {address}: {new_spd:.6f} {unit}")
         self.req_spd.emit(address, new_spd, unit)
+
+    @QtCore.pyqtSlot()
+    def _on_request_set_lbound(self, address: int, new_lbound: float, unit: str):
+        self.status_panel.append_line(f"Set lower bound requested → Address {address}: {new_lbound:.6f} {unit}")
+        self.req_set_lbound.emit(address, new_lbound, unit)
+    
+    @QtCore.pyqtSlot()
+    def _on_request_set_ubound(self, address: int, new_ubound: float, unit: str):
+        self.status_panel.append_line(f"Set upper bound requested → Address {address}: {new_ubound:.6f} {unit}")
+        self.req_set_ubound.emit(address, new_ubound, unit)
 
     def closeEvent(self, a0: QtGui.QCloseEvent | None) -> None:
         try:

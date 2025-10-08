@@ -252,7 +252,7 @@ class ZaberStageIO(QtCore.QObject):
             self.error.emit(f"Set target speed failed: {e}")
     
     @QtCore.pyqtSlot(int, float, str)
-    def set_min_limit(self, address: int, value: float, unit: str):
+    def set_lower_limit(self, address: int, value: float, unit: str):
         """Set the device's Minimum Position (soft lower bound)."""
         try:
             if self.conn is None:
@@ -261,14 +261,16 @@ class ZaberStageIO(QtCore.QObject):
             u = Units.LENGTH_MILLIMETRES if unit == "mm" else Units.ANGLE_DEGREES
             dev.settings.set(BinarySettings.MINIMUM_POSITION, float(value), u)
             # Read back to confirm
-            readback = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
-            self.log.emit(f"Address {address}: min limit set to {readback:.6f} {unit}")
+            minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
+            maxpos = dev.settings.get(BinarySettings.MAXIMUM_POSITION, u)
+            self.log.emit(f"Address {address}: min limit set to {minpos:.6f} {unit}")
+            self.bounds.emit(int(address), float(minpos), float(maxpos))
         except Exception as e:
             self.error.emit(f"Set min limit failed: {e}")
     
 
     @QtCore.pyqtSlot(int, float, str)
-    def set_max_limit(self, address: int, value: float, unit: str):
+    def set_upper_limit(self, address: int, value: float, unit: str):
         """Set the device's Maximum Position (soft upper bound)."""
         try:
             if self.conn is None:
@@ -277,8 +279,10 @@ class ZaberStageIO(QtCore.QObject):
             u = Units.LENGTH_MILLIMETRES if unit == "mm" else Units.ANGLE_DEGREES
             dev.settings.set(BinarySettings.MAXIMUM_POSITION, float(value), u)
             # Read back to confirm
-            readback = dev.settings.get(BinarySettings.MAXIMUM_POSITION, u)
-            self.log.emit(f"Addr {address}: max limit set to {readback:.6f} {unit}")
+            maxpos = dev.settings.get(BinarySettings.MAXIMUM_POSITION, u)
+            minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
+            self.log.emit(f"Addr {address}: max limit set to {maxpos:.6f} {unit}")
+            self.bounds.emit(int(address), float(minpos), float(maxpos))
         except Exception as e:
             self.error.emit(f"Set max limit failed: {e}")
     

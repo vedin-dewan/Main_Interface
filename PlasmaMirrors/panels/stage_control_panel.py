@@ -7,6 +7,8 @@ class StageControlPanel(QtWidgets.QWidget):
     request_home = QtCore.pyqtSignal(int)
     request_move_delta = QtCore.pyqtSignal(int, float)
     request_set_speed = QtCore.pyqtSignal(int, float)
+    request_set_lbound = QtCore.pyqtSignal(int, float)
+    request_set_ubound = QtCore.pyqtSignal(int, float)
 
     def __init__(self, rows: list[MotorRow]):
         super().__init__()
@@ -181,6 +183,7 @@ class StageControlPanel(QtWidgets.QWidget):
             val = row.info.ubound - 0.01  # ensure lbound < ubound
         row.info.lbound = val
         msg = f"Set Lower Bound of {row.info.short}, Index {row.index} to {val:.4f} {row.info.unit}"
+        self.request_set_lbound.emit(int(row.index), float(val))
         self.action_performed.emit(msg)
         self.lbound_value.setValue(val)  # update spinbox in case it was adjusted
 
@@ -191,6 +194,7 @@ class StageControlPanel(QtWidgets.QWidget):
             val = row.info.lbound + 0.01  # ensure ubound > lbound
         row.info.ubound = val
         msg = f"Set Upper Bound of {row.info.short}, Index {row.index} to {val:.4f} {row.info.unit}"
+        self.request_set_ubound.emit(int(row.index), float(val))
         self.action_performed.emit(msg)
         self.ubound_value.setValue(val)  # update spinbox in case it was adjusted
         
