@@ -97,7 +97,7 @@ class ZaberStageIO(QtCore.QObject):
         def _wait_and_finalize():
             try:
                 dev = self.conn.get_device(int(address))
-                dev.wait_until_idle()  # this blocks, but in a worker thread now
+                #dev.wait_until_idle()  # this blocks, but in a worker thread now
                 steps = dev.get_position()
                 if unit == "mm":
                     pos = dev.get_position(Units.LENGTH_MILLIMETRES)
