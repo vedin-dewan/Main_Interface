@@ -1,6 +1,6 @@
 import sys
 from PyQt6 import QtCore, QtGui, QtWidgets
-from matplotlib.pyplot import grid
+# from matplotlib.pyplot import grid
 from MotorInfo import MotorInfo
 from device_io.zaber_stage_io import ZaberStageIO
 from panels.motor_status_panel import MotorStatusPanel
