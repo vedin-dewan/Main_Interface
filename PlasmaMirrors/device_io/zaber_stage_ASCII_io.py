@@ -3,7 +3,7 @@ from PyQt6 import QtCore
 from zaber_motion import Units
 from zaber_motion.ascii import Connection  # <-- ASCII API
 
-class AsciiStageIO(QtCore.QObject):
+class ZaberStageIO(QtCore.QObject):
     # Signals identical to your Binary version
     log        = QtCore.pyqtSignal(str)
     error      = QtCore.pyqtSignal(str)
