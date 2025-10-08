@@ -124,12 +124,7 @@ class ZaberStageIO(QtCore.QObject):
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
             if unit == "mm":
-                import time
-                t0 = time.monotonic()
-                self.log.emit(f"move_absolute ENTER {t0:.3f}")
                 dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES)
-                t1 = time.monotonic()
-                self.log.emit(f"move_absolute AFTER CALL {t1:.3f}  (Δ={t1 - t0:.3f}s)")
             else:
                 dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES)
             self._start_waiter(address, unit)
