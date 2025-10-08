@@ -259,7 +259,9 @@ class ZaberStageIO(QtCore.QObject):
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
             u = Units.LENGTH_MILLIMETRES if unit == "mm" else Units.ANGLE_DEGREES
+           
             dev.settings.set(BinarySettings.MINIMUM_POSITION, float(value), u)
+            
             # Read back to confirm
             minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
             maxpos = dev.settings.get(BinarySettings.MAXIMUM_POSITION, u)
@@ -280,7 +282,13 @@ class ZaberStageIO(QtCore.QObject):
             dev.settings.set(BinarySettings.MAXIMUM_POSITION, float(value), u)
             # Read back to confirm
             maxpos = dev.settings.get(BinarySettings.MAXIMUM_POSITION, u)
-            minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
+            # This is because min position fails for PM1y,x,redirect for some reason
+            try:
+                minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
+            except Exception as e:
+                self.error.emit(f"Get min limit failed: {e}")
+                minpos = 0.0  # fail-safe
+            
             self.log.emit(f"Addr {address}: max limit set to {maxpos:.6f} {unit}")
             self.bounds.emit(int(address), float(minpos), float(maxpos))
         except Exception as e:
@@ -294,7 +302,14 @@ class ZaberStageIO(QtCore.QObject):
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
             u = Units.LENGTH_MILLIMETRES if unit == "mm" else Units.ANGLE_DEGREES
-            minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
+            
+            # This is because min position fails for PM1y,x,redirect for some reason
+            try:
+                minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
+            except Exception as e:
+                self.error.emit(f"Get min limit failed: {e}")
+                minpos = 0.0  # fail-safe
+            
             maxpos = dev.settings.get(BinarySettings.MAXIMUM_POSITION, u)
             self.log.emit(f"Address {address}: limits [{minpos:.6f}, {maxpos:.6f}] {unit}")
             self.bounds.emit(int(address), float(minpos), float(maxpos))
