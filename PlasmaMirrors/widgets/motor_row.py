@@ -88,27 +88,3 @@ class MotorRow(QtWidgets.QWidget):
         v = max(lo, min(hi, v))
         return int(round((v - lo) / (hi - lo) * 100))
 
-    # # --- interactions / simulation ---
-    # def eventFilter(self, obj, event):
-    #     if event.type() == QtCore.QEvent.Type.MouseButtonDblClick:
-    #         self.set_moving(not self._moving)
-    #         return True
-    #     return super().eventFilter(obj, event)
-
-    # def set_moving(self, moving: bool, step_per_tick: int = 3000):
-    #     self._moving = moving
-    #     self._step_per_tick = step_per_tick if moving else 0
-    #     self.light_green.set_on(moving)
-    #     self.toggled_motion.emit(moving)
-
-    # def stop_motion(self):
-    #     self.set_moving(False)
-
-    # def tick(self):
-    #     if not self._moving:
-    #         return
-    #     self.info.steps += self._step_per_tick
-    #     self.info.eng_value = (self.info.steps / 100000.0) % self.info.span
-    #     self.lbl_steps.setText(self._fmt_steps(self.info.steps))
-    #     self.lbl_units.setText(self._fmt_units(self.info.eng_value, self.info.unit, rich=True))
-    #     self.bar.setValue(self._progress_from_value(self.info.eng_value))

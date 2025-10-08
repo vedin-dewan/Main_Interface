@@ -23,14 +23,9 @@ class MotorStatusPanel(QtWidgets.QWidget):
         scroll.setWidget(container)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
 
-        # btn_sim_all = QtWidgets.QPushButton("Simulate All")
-        # btn_sim_all.setCheckable(True)
-        # btn_sim_all.toggled.connect(self._toggle_all)
-
         topbar = QtWidgets.QHBoxLayout()
         topbar.addWidget(title)
         topbar.addStretch(1)
-        # topbar.addWidget(btn_sim_all)
 
         layout = QtWidgets.QVBoxLayout(self)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Expanding)
@@ -39,19 +34,6 @@ class MotorStatusPanel(QtWidgets.QWidget):
         layout.setSpacing(6)
         layout.addLayout(topbar)
         layout.addWidget(scroll)
-
-        # self.timer = QtCore.QTimer(self)
-        # self.timer.setInterval(50)
-        # self.timer.timeout.connect(self._tick)
-        # self.timer.start()
-
-    # def _toggle_all(self, on: bool):
-    #     for r in self.rows:
-    #         r.set_moving(on)
-
-    # def _tick(self):
-    #     for r in self.rows:
-    #         r.tick()
 
     # called by MainWindow on readbacks
     def update_address(self, steps: float, pos: float, stage_no: int):
