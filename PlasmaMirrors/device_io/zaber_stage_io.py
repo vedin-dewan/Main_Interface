@@ -97,9 +97,9 @@ class ZaberStageIO(QtCore.QObject):
         def _wait_and_finalize():
             try:
                 dev = self.conn.get_device(int(address))
-                #dev.wait_until_idle()  # this blocks, but in a worker thread now
+                dev.wait_until_idle()  # this blocks, but in a worker thread now
                 steps = dev.get_position()
-                if unit == "mm":
+                if unit == "mm": 
                     pos = dev.get_position(Units.LENGTH_MILLIMETRES)
                 else:
                     pos = dev.get_position(Units.ANGLE_DEGREES)
@@ -124,7 +124,12 @@ class ZaberStageIO(QtCore.QObject):
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
             if unit == "mm":
+                import time
+                t0 = time.monotonic()
+                self.log.emit(f"move_absolute ENTER {t0:.3f}")
                 dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES)
+                t1 = time.monotonic()
+                self.log.emit(f"move_absolute AFTER CALL {t1:.3f}  (Δ={t1 - t0:.3f}s)")
             else:
                 dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES)
             self.log.emit("Started start_waiter function")
