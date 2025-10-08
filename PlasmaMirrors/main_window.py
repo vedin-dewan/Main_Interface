@@ -6,6 +6,8 @@ from panels.motor_status_panel import MotorStatusPanel
 from panels.stage_control_panel import StageControlPanel
 from panels.status_panel import StatusPanel
 from panels.PM_panel import PMPanel
+from panels.fire_controls_panel import FireControlsPanel
+from device_io.kinesis_fire_io import KinesisFireIO, FireConfig
 from panels.placeholder_panel import PlaceholderPanel
 
 PORT = "COM8"; BAUD = 115200
@@ -47,7 +49,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ]
 
         self.overall_controls = PlaceholderPanel("Overall Controls")
-        self.fire_controls    = PlaceholderPanel("Fire Controls")
+        self.fire_panel    = FireControlsPanel()
         self.pm_panel= PMPanel()
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
@@ -62,7 +64,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Top row: Overall Controls | Fire Controls | PM panel
         grid.addWidget(self.overall_controls, 0, 0)
-        grid.addWidget(self.fire_controls,    0, 1)
+        grid.addWidget(self.fire_panel,    0, 1)
         grid.addWidget(self.pm_panel,         0, 2)
 
         # Bottom row: Status | Stages (part1) | Stage Controls (part2)
@@ -81,12 +83,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.setCentralWidget(central)
 
-        # I/O thread
+        # --- Stage I/O thread ---
         self.io_thread = QtCore.QThread(self)
         self.stage = ZaberStageIO(PORT, BAUD)
         self.stage.moveToThread(self.io_thread)
 
-        # lifecycle
+        # # start/stop lifecycle
         self.io_thread.started.connect(self.stage.open)
         self.stage.opened.connect(self.stage.discover)
         self.stage.log.connect(self.status_panel.append_line)
@@ -99,6 +101,42 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage.homed.connect(self._on_homed)
         self.stage.bounds.connect(self._on_bounds)
         self.io_thread.start()
+
+        # --- Fire I/O thread ---
+        self.fire_thread = QtCore.QThread(self)
+        cfg = FireConfig(
+            serial=None,                 # or "6800xxxx" to pin a specific unit
+            out_pin_shutter="Dev1/port0/line0",
+            out_pin_cam="Dev1/port0/line2",
+            out_pin_spec="Dev1/port0/line3",
+            input_trigger="Dev1/PFI0",
+            poll_period_s=0.02,
+            start_enabled=False,
+        )
+        self.fire_io = KinesisFireIO(cfg)
+        self.fire_io.moveToThread(self.fire_thread)
+
+        # start/stop lifecycle
+        self.fire_thread.started.connect(self.fire_io.open)
+        # OPTIONAL: if the thread ever stops, ensure close got called
+        self.fire_thread.finished.connect(self.fire_io.close)
+        self.fire_thread.start()
+
+        # Panel → IO
+        self.fire_panel.request_mode.connect(self.fire_io.set_mode, 
+                                            type=QtCore.Qt.ConnectionType.QueuedConnection)
+        self.fire_panel.request_burst.connect(self.fire_io.set_burst_count, 
+                                            type=QtCore.Qt.ConnectionType.QueuedConnection)
+        self.fire_panel.request_fire.connect(self.fire_io.fire, 
+                                            type=QtCore.Qt.ConnectionType.QueuedConnection)
+
+        # IO → Panel + Status log
+        self.fire_io.status.connect(self.fire_panel.set_status)
+        self.fire_io.shots_progress.connect(self.fire_panel.set_progress)
+        self.fire_io.log.connect(self.status_panel.append_line)
+        self.fire_io.error.connect(self.status_panel.append_line)
+        self.fire_io.connected.connect(
+            lambda s: self.status_panel.append_line(f"Kinesis connected: {s}"))
 
         # thread-safe wiring
         self.req_read.connect(self.stage.read_position_speed, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -237,6 +275,15 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, 'io_thread') and self.io_thread is not None:
                 self.io_thread.quit()
                 self.io_thread.wait(1000)
+        except Exception:
+            pass
+        try:
+            QtCore.QMetaObject.invokeMethod(self.fire_io, "close", QtCore.Qt.ConnectionType.QueuedConnection)
+        except Exception:
+            pass
+        try:
+            self.fire_thread.quit()
+            self.fire_thread.wait(1500)
         except Exception:
             pass
         super().closeEvent(a0)
