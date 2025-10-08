@@ -1,5 +1,6 @@
 import sys
 from PyQt6 import QtCore, QtGui, QtWidgets
+from matplotlib.pyplot import grid
 from MotorInfo import MotorInfo
 from device_io.zaber_stage_io import ZaberStageIO
 from panels.motor_status_panel import MotorStatusPanel
@@ -64,7 +65,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Top row: Overall Controls | Fire Controls | PM panel
         grid.addWidget(self.overall_controls, 0, 0)
-        grid.addWidget(self.fire_panel,0, 1)
+        grid.addWidget(self.fire_panel, 0, 1)
         grid.addWidget(self.pm_panel, 0, 2)
 
         # Bottom row: Status | Stages (part1) | Stage Controls (part2)
@@ -123,20 +124,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fire_thread.start()
 
         # Panel → IO
-        self.fire_panel.request_mode.connect(self.fire_io.set_mode, 
-                                            type=QtCore.Qt.ConnectionType.QueuedConnection)
-        self.fire_panel.request_burst.connect(self.fire_io.set_burst_count, 
-                                            type=QtCore.Qt.ConnectionType.QueuedConnection)
-        self.fire_panel.request_fire.connect(self.fire_io.fire, 
-                                            type=QtCore.Qt.ConnectionType.QueuedConnection)
+        self.fire_panel.request_mode.connect(self.fire_io.set_mode)
+        self.fire_panel.request_shots.connect(self.fire_io.set_num_shots)
+        self.fire_panel.request_fire.connect(self.fire_io.fire)
 
-        # IO → Panel + Status log
+        # worker -> UI
         self.fire_io.status.connect(self.fire_panel.set_status)
-        self.fire_io.shots_progress.connect(self.fire_panel.set_progress)
-        self.fire_io.log.connect(self.status_panel.append_line)
+        #self.fire_io.shots_progress.connect(self.fire_panel.set_progress)
+        self.fire_io.log.connect(self.status_panel.append_line)     # if you have a log area
         self.fire_io.error.connect(self.status_panel.append_line)
-        self.fire_io.connected.connect(
-            lambda s: self.status_panel.append_line(f"Kinesis connected: {s}"))
 
         # thread-safe wiring
         self.req_read.connect(self.stage.read_position_speed, QtCore.Qt.ConnectionType.QueuedConnection)
