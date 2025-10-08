@@ -127,6 +127,7 @@ class ZaberStageIO(QtCore.QObject):
                 dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES)
             else:
                 dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES)
+            self.log.emit("Started start_waiter function")
             self._start_waiter(address, unit)
         except Exception as e:
             self.error.emit(f"Move failed: {e}")
