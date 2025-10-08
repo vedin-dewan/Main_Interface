@@ -118,6 +118,7 @@ class ZaberStageIO(QtCore.QObject):
     @QtCore.pyqtSlot(int, float, str)
     def move_absolute(self, address: int, target_pos: float, unit: str):
         """Send move and return immediately; do not block the StageIO thread."""
+        self.moving.emit(int(address), True)
         try:
             if self.conn is None:
                 self.error.emit("Not connected"); return
@@ -126,8 +127,6 @@ class ZaberStageIO(QtCore.QObject):
                 dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES)
             else:
                 dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES)
-
-            self.moving.emit(int(address), True)
             self._start_waiter(address, unit)
         except Exception as e:
             self.error.emit(f"Move failed: {e}")
@@ -164,12 +163,12 @@ class ZaberStageIO(QtCore.QObject):
 
     @QtCore.pyqtSlot(int)
     def home(self, address: int):
+        self.moving.emit(int(address), True)
         try:
             if self.conn is None:
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
             dev.home()
-            self.moving.emit(int(address), True)
             self._start_waiter(address, "mm",homed=True)  # unit here is only for formatting; you can map by address
         except Exception as e:
             self.error.emit(f"Home failed: {e}")
@@ -192,6 +191,7 @@ class ZaberStageIO(QtCore.QObject):
 
     @QtCore.pyqtSlot(int, float, str)
     def move_delta(self, address: int, delta_pos: float, unit: str):
+        self.moving.emit(int(address), True)
         try:
             if self.conn is None:
                 self.error.emit("Not connected"); return
@@ -202,8 +202,6 @@ class ZaberStageIO(QtCore.QObject):
             else:
                 cur = float(dev.get_position(Units.ANGLE_DEGREES))
                 dev.move_absolute(cur + float(delta_pos), Units.ANGLE_DEGREES)
-
-            self.moving.emit(int(address), True)
             self._start_waiter(address, unit)
         except Exception as e:
             self.error.emit(f"Move delta failed: {e}")
