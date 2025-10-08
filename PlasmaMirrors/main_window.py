@@ -13,6 +13,7 @@ PORT = "COM8"; BAUD = 115200
 class MainWindow(QtWidgets.QMainWindow):
     # requests forwarded to I/O worker (queued)
     req_read = QtCore.pyqtSignal(int, str)
+    req_bounds = QtCore.pyqtSignal(int, str)
     req_abs  = QtCore.pyqtSignal(int, float, str)
     req_jog  = QtCore.pyqtSignal(int, float, str)
     req_home = QtCore.pyqtSignal(int)
@@ -94,10 +95,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage.moving.connect(self._on_moving)
         self.stage.moved.connect(self._on_moved)
         self.stage.homed.connect(self._on_homed)
+        self.stage.bounds.connect(self._on_bounds)
         self.io_thread.start()
 
         # thread-safe wiring
         self.req_read.connect(self.stage.read_position_speed, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.req_bounds.connect(self.stage.get_limits, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_abs.connect(self.stage.move_absolute, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_jog.connect(self.stage.move_delta, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_home.connect(self.stage.home, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -144,6 +147,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     unit = 'mm'
                 # schedule the read on the Qt event loop to keep ordering predictable
                 QtCore.QTimer.singleShot(0, lambda a=addr, u=unit: self.req_read.emit(a, u))
+                QtCore.QTimer.singleShot(0, lambda a=addr, u=unit: self.req_bounds.emit(a, u))
         else:
             self.status_panel.append_line("Discovery finished with no devices.")
 
@@ -154,10 +158,13 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int, float)
     def _on_speed(self, address: int, speed: float):
         self.part1.update_speed(speed, address)
+        
+    @QtCore.pyqtSlot(int, float, float)
+    def _on_bounds(self, address: int, lower: float, upper: float):
+        self.part1.update_bounds(lower, upper, address)
 
     @QtCore.pyqtSlot(int, bool)
     def _on_moving(self, address: int, is_moving: bool):
-        
         if 1 <= address <= len(self.part1.rows):
             row = self.part1.rows[address - 1]
             row.light_green.set_on(is_moving)

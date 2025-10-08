@@ -54,3 +54,12 @@ class MotorStatusPanel(QtWidgets.QWidget):
             return
         row.info.speed = float(speed)
         row.lbl_speed_units.setText(row._fmt_units(row.info.speed, row.info.speed_unit, rich=True))
+    
+    def update_bounds(self, lower: float, upper: float, stage_no: int):
+        try:
+            row = self.rows[stage_no - 1]
+        except Exception:
+            return
+        row.info.lbound = float(lower)
+        row.info.ubound = float(upper)
+        row.bar.setValue(row._progress_from_value(row.info.eng_value))
