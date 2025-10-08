@@ -1,7 +1,7 @@
 import sys
 from PyQt6 import QtCore, QtGui, QtWidgets
 from MotorInfo import MotorInfo
-from device_io.zaber_stage_io import ZaberStageIO
+from device_io.zaber_stage_poll_io import ZaberStageIO
 from panels.motor_status_panel import MotorStatusPanel
 from panels.stage_control_panel import StageControlPanel
 from panels.status_panel import StatusPanel
