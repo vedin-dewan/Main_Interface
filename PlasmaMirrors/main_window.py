@@ -104,6 +104,8 @@ class MainWindow(QtWidgets.QMainWindow):
             # Pass status_panel.append_line as logger callback to get feedback in UI
             try:
                 self.pm_panel.load_from_file(pm_file, logger=self.status_panel.append_line)
+                # ensure Saved_positions.json values are applied after pm settings
+                QtCore.QTimer.singleShot(50, lambda: getattr(self.pm_panel, '_load_saved_values', lambda: None)())
             except Exception:
                 # status_panel may not yet be set up — try again slightly later
                 QtCore.QTimer.singleShot(50, lambda: getattr(self.pm_panel, 'load_from_file', lambda *a, **k: None)(pm_file, logger=getattr(self.status_panel, 'append_line', None)))

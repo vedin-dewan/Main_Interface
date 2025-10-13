@@ -252,109 +252,94 @@ class PMPanel(QtWidgets.QWidget):
         except Exception:
             return
 
-        def apply_direct_map(mg, mapping_source):
-            # mapping_source expected to be a dict mapping labels to numeric values
-            mapping = {'RX': mg.row_rx, 'Y': mg.row_y, 'Z': mg.row_z, 'SD': mg.row_sd}
-            if not isinstance(mapping_source, dict):
-                return
-            for label, row in mapping.items():
+        # helper: map stage dict item to a row by stage_num if present, otherwise by name suffix
+        def map_stage_to_row(stage_obj):
+            """Return (mg, row) tuple for a given stage entry or (None, None) if no match.
+            stage_obj expected to have keys: name, position, maybe stage_num.
+            """
+            name = str(stage_obj.get('name', '')).upper()
+            num = stage_obj.get('stage_num')
+            # prefer numeric stage_num mapping
+            if isinstance(num, int):
+                # find row with matching stage_num
+                for mg in (self.pm1, self.pm2, self.pm3):
+                    for r in (mg.row_rx, mg.row_y, mg.row_z, mg.row_sd):
+                        try:
+                            if int(r.stage_num.value()) == int(num):
+                                return mg, r
+                        except Exception:
+                            continue
+            # fallback: map by name suffix, e.g., PM1R -> PM1 and R -> RX
+            # find which PM group this name references
+            pm_index = None
+            if name.startswith('PM') and len(name) >= 3:
                 try:
-                    if label in mapping_source:
-                        row.set_zero(float(mapping_source[label]))
+                    pm_index = int(name[2]) - 1  # PM1 -> index 0
                 except Exception:
-                    pass
+                    pm_index = None
 
-        def apply_preset_stages(mg, preset_obj):
-            # preset_obj expected to be dict with 'stages' list of {name, position}
-            if not isinstance(preset_obj, dict):
-                return
-            stages = preset_obj.get('stages', [])
-            if not isinstance(stages, list):
-                return
-            # walk stages and map names to RX/Y/Z/SD via suffix heuristic
-            for st in stages:
-                try:
-                    name = str(st.get('name', ''))
-                    pos = st.get('position', None)
-                    if pos is None:
-                        continue
-                    # normalize
-                    nm = name.upper()
-                    # heuristics: look for trailing character
-                    if nm.startswith('PM') and len(nm) >= 4:
-                        suffix = nm[3:]
-                    else:
-                        suffix = nm[-1:]
-                    # choose mapping
-                    if suffix.startswith('R'):
-                        mg.row_rx.set_zero(float(pos))
-                    elif 'Y' in suffix:
-                        mg.row_y.set_zero(float(pos))
-                    elif 'Z' in suffix:
-                        mg.row_z.set_zero(float(pos))
-                    elif 'D' in suffix or 'S' in suffix:
-                        # treat D or S as SD/redirect
-                        mg.row_sd.set_zero(float(pos))
-                except Exception:
-                    pass
+            # suffix mapping
+            suffix = ''
+            if len(name) >= 4:
+                suffix = name[3:]
+            elif len(name) >= 1:
+                suffix = name[-1:]
 
-        # Now try to apply keys for PM1/PM2/PM3
+            if pm_index is not None and 0 <= pm_index <= 2:
+                mg = [self.pm1, self.pm2, self.pm3][pm_index]
+                # Accept a few common suffixes: R or X -> RX, Y -> Y, Z -> Z, D/S -> SD
+                # Some saved files use 'PM#X' (X) while others use 'PM#R' (R) for the RX axis.
+                if suffix.startswith('R') or suffix == 'X' or 'X' in suffix:
+                    return mg, mg.row_rx
+                if 'Y' in suffix:
+                    return mg, mg.row_y
+                if 'Z' in suffix:
+                    return mg, mg.row_z
+                if 'D' in suffix or 'S' in suffix:
+                    return mg, mg.row_sd
+
+            # last-resort: search rows for a matching short name in stage_obj.name
+            for mg in (self.pm1, self.pm2, self.pm3):
+                for r in (mg.row_rx, mg.row_y, mg.row_z, mg.row_sd):
+                    try:
+                        # if r has a name mapping (via stage_num or label), compare
+                        if name.endswith(r.__class__.__name__.upper()):
+                            return mg, r
+                    except Exception:
+                        pass
+            return None, None
+
+        # apply Zero and Microscope blocks
         try:
-            for idx in range(3):
-                mg = [self.pm1, self.pm2, self.pm3][idx]
-                zero_key = f'Zero PM{idx+1}'
-                mo_key = f'Microscope PM{idx+1}'
+            for key, payload in (data.items() if isinstance(data, dict) else []):
+                if not isinstance(payload, dict):
+                    continue
+                stages = payload.get('stages')
+                if not isinstance(stages, list):
+                    continue
+                # Determine whether this block is Zero PMn or Microscope PMn by key name
+                key_upper = str(key).upper()
+                is_zero = key_upper.startswith('ZERO PM')
+                is_mic = key_upper.startswith('MICROSCOPE PM')
+                # If neither, still process (some presets are generic and we may want to apply)
 
-                # direct label mapping
-                zero_val = data.get(zero_key)
-                if zero_val is not None:
-                    apply_direct_map(mg, zero_val)
-                else:
-                    # search for preset with this name and stages list
-                    preset = data.get(zero_key)
-                    if preset is not None and isinstance(preset, dict) and 'stages' in preset:
-                        apply_preset_stages(mg, preset)
-                    else:
-                        # fallback: scan top-level presets for one whose stages mention PM{n}
-                        for key, val in data.items():
-                            if not isinstance(val, dict):
-                                continue
-                            stages = val.get('stages')
-                            if not isinstance(stages, list):
-                                continue
-                            # if any stage name contains 'PM{n}', use this preset
-                            if any(isinstance(s, dict) and isinstance(s.get('name'), str) and f'PM{idx+1}' in s.get('name', '') for s in stages):
-                                apply_preset_stages(mg, val)
-                                break
-
-                # MO values
-                mo_val = data.get(mo_key)
-                if mo_val is not None:
-                    # direct mapping
-                    if isinstance(mo_val, dict):
-                        for label, row in {'RX': mg.row_rx, 'Y': mg.row_y, 'Z': mg.row_z, 'SD': mg.row_sd}.items():
-                            try:
-                                if label in mo_val:
-                                    row.set_mo(float(mo_val[label]))
-                            except Exception:
-                                pass
-                    # preset form
-                    elif isinstance(mo_val, dict) and 'stages' in mo_val:
-                        # treat similar to preset
-                        apply_preset_stages(mg, mo_val)
-                else:
-                    # fallback search
-                    for key, val in data.items():
-                        if not isinstance(val, dict):
+                for st in stages:
+                    try:
+                        mg, row = map_stage_to_row(st)
+                        if mg is None or row is None:
                             continue
-                        stages = val.get('stages')
-                        if not isinstance(stages, list):
+                        pos = st.get('position', None)
+                        if pos is None:
                             continue
-                        if any(isinstance(s, dict) and isinstance(s.get('name'), str) and f'PM{idx+1}' in s.get('name', '') for s in stages):
-                            # try to find microscope-prefixed keys
-                            # we'll reuse apply_preset_stages to pull positions into MO fields
-                            apply_preset_stages(mg, val)
-                            break
+                        if is_zero:
+                            row.set_zero(float(pos))
+                        elif is_mic:
+                            row.set_mo(float(pos))
+                        else:
+                            # for general presets, prefer setting zero (conservative)
+                            row.set_zero(float(pos))
+                    except Exception:
+                        pass
         except Exception:
             pass
 
