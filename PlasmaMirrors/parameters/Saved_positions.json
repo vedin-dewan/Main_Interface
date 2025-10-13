@@ -98,5 +98,128 @@
         "order": 1
       }
     ]
+  },
+  "Zero PM1": {
+    "last_saved_time": "2025-10-09T15:16:47",
+    "stages": [
+      {
+        "name": "PM1R",
+        "position":30.00,
+        "order": 1
+      },
+      {
+        "name": "PM1Y",
+        "position": 70.0,
+        "order": 2
+      },
+      {
+        "name": "PM1Z",
+        "position": 36.00,
+        "order": 3
+      }
+    ]
+  },
+  "Zero PM2": {
+    "last_saved_time": "2025-10-09T15:16:47",
+    "stages": [
+      {
+        "name": "PM2Y",
+        "position":93.3693,
+        "order": 2
+      },
+      {
+        "name": "PM2Z",
+        "position": 52.8200,
+        "order": 1
+      },
+      {
+        "name": "PM2X",
+        "position": 70.13,
+        "order": 3
+      }
+    ]
+  },
+  "Zero PM3": {
+    "last_saved_time": "2025-10-09T15:16:47",
+    "stages": [
+      {
+        "name": "PM3Y",
+        "position":110.12,
+        "order": 1
+      },
+      {
+        "name": "PM3Z",
+        "position": 31.4169,
+        "order": 2
+      },
+      {
+        "name": "PM3X",
+        "position": 28.50,
+        "order": 3
+      }
+    ]
+  },
+  "Microscope PM2": {
+    "last_saved_time": "2025-10-09T15:16:47",
+    "stages": [
+      {
+        "name": "PM2Y",
+        "position": 73.7820,
+        "order": 2
+      },
+      {
+        "name": "PM2Z",
+        "position": 52.8808,
+        "order": 1
+      },
+      {
+        "name": "PM2X",
+        "position": 36.3392,
+        "order": 3
+      }
+        
+    ]
+  },
+  "Microscope PM3": {
+    "last_saved_time": "2025-10-09T15:16:47",
+    "stages": [
+      {
+        "name": "PM3Y",
+        "position": 96.8182,
+        "order": 1
+      },
+      {
+        "name": "PM3Z",
+        "position": 43.9982,
+        "order": 2
+      },
+      {
+        "name": "PM3X",
+        "position": 69.8897,
+        "order": 3
+      }
+        
+    ]
+  },
+  "Home PM3": {
+    "last_saved_time": "2025-10-09T15:16:47",
+    "stages": [
+      {
+        "name": "PM3Y",
+        "position": 0,
+        "order": 2
+      },
+      {
+        "name": "PM3Z",
+        "position": 0,
+        "order": 1
+      },
+      {
+        "name": "PM3X",
+        "position": 0,
+        "order": 3
+      }
+        
+    ]
   }
 }
