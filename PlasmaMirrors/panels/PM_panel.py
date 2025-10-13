@@ -194,6 +194,9 @@ class PMMirrorGroup(QtWidgets.QGroupBox):
         v.addLayout(bottom)
 
 class PMPanel(QtWidgets.QWidget):
+    # signal: (pm_index: 1..3, new_state: bool)
+    bypass_clicked = QtCore.pyqtSignal(int, bool)
+
     def __init__(self):
         super().__init__()
         self.pm1 = PMMirrorGroup("Plasma Mirror 1")
@@ -207,6 +210,14 @@ class PMPanel(QtWidgets.QWidget):
         v.addWidget(self.pm2)
         v.addWidget(self.pm3)
         v.addStretch(1)
+
+        # wire bypass toggles to a panel-level signal with PM index
+        try:
+            for idx, mg in enumerate((self.pm1, self.pm2, self.pm3), start=1):
+                # mg.bypass is a ToggleBypassButton (checkable); emit index + new state
+                mg.bypass.toggled.connect(lambda checked, i=idx: self.bypass_clicked.emit(i, checked))
+        except Exception:
+            pass
 
         # Match app style
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)

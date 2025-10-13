@@ -106,6 +106,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.pm_panel.load_from_file(pm_file, logger=self.status_panel.append_line)
                 # ensure Saved_positions.json values are applied after pm settings
                 QtCore.QTimer.singleShot(50, lambda: getattr(self.pm_panel, '_load_saved_values', lambda: None)())
+                # react to bypass toggles to move SD to min/max
+                try:
+                    self.pm_panel.bypass_clicked.connect(self._on_pm_bypass_clicked)
+                except Exception:
+                    pass
             except Exception:
                 # status_panel may not yet be set up — try again slightly later
                 QtCore.QTimer.singleShot(50, lambda: getattr(self.pm_panel, 'load_from_file', lambda *a, **k: None)(pm_file, logger=getattr(self.status_panel, 'append_line', None)))
@@ -384,6 +389,38 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status_panel.append_line(f"Move error on Address {address}: {e}")
         # attempt to keep going
         QtCore.QTimer.singleShot(0, self._dequeue_and_move_next)
+
+    @QtCore.pyqtSlot(int, bool)
+    def _on_pm_bypass_clicked(self, pm_index: int, engaged: bool):
+        """Handle PM bypass toggles. When BYPASS (False) clicked, move SD to its min.
+        When ENGAGE (True) clicked, move SD to its max. pm_index is 1..3.
+        """
+        try:
+            # find the mirror group and its SD row
+            mg = [self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3][pm_index - 1]
+            sd_row = mg.row_sd
+            # use row.sd min/max values and row.stage_num for address
+            addr = int(sd_row.stage_num.value())
+            if addr <= 0:
+                self.status_panel.append_line(f"PM{pm_index} SD has invalid stage number ({addr}); cannot move.")
+                return
+            # The 'engaged' parameter is the new checked state after the click.
+            # The requirement is: when the button was showing 'BYPASS' and is clicked -> move to MIN,
+            # and when it was showing 'ENGAGE' and is clicked -> move to MAX. The previous state is
+            # therefore the inverse of the new state.
+            prev_was_bypass = bool(not engaged)
+            # User requested behavior: when it shows 'BYPASS' move to MAX; when it shows 'ENGAGE' move to MIN.
+            if prev_was_bypass:
+                target = sd_row.max.value()
+            else:
+                target = sd_row.min.value()
+            unit = 'mm'  # SD axes use mm in MotorInfo mapping; this should match part1 rows' unit if needed
+            self.status_panel.append_line(f"PM{pm_index} bypass click (was {'BYPASS' if prev_was_bypass else 'ENGAGE'}) → moving SD (addr {addr}) to {target:.6f} {unit}")
+            # schedule a move via req_abs (thread-safe queued signal)
+            self.req_abs.emit(addr, float(target), unit)
+        except Exception as e:
+            try: self.status_panel.append_line(f"Failed to handle PM bypass click: {e}")
+            except Exception: pass
 
     def closeEvent(self, a0: QtGui.QCloseEvent | None) -> None:
         try:
