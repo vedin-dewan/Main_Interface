@@ -107,12 +107,12 @@ class ZaberStageIO(QtCore.QObject):
             except Exception:
                 pass
             if unit == "mm":
-                dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES)
+                dev.move_absolute(float(target_pos), Units.LENGTH_MILLIMETRES, timeout=1000)
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.LENGTH_MILLIMETRES)
             else:
-                dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES)
+                dev.move_absolute(float(target_pos), Units.ANGLE_DEGREES, timeout=1000)
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.ANGLE_DEGREES)
@@ -130,7 +130,7 @@ class ZaberStageIO(QtCore.QObject):
             if self.conn is None:
                 self.error.emit("Not connected"); return
             dev = self.conn.get_device(int(address))
-            dev.home()
+            dev.home(timeout=1000)
             dev.wait_until_idle()
             self.homed.emit(int(address))
         except Exception as e:
@@ -152,7 +152,7 @@ class ZaberStageIO(QtCore.QObject):
             if unit == "mm":
                 cur = float(dev.get_position(Units.LENGTH_MILLIMETRES))
                 target = cur + float(delta_pos)
-                dev.move_absolute(target, Units.LENGTH_MILLIMETRES)
+                dev.move_absolute(target, Units.LENGTH_MILLIMETRES, timeout=1000)
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.LENGTH_MILLIMETRES)
@@ -160,7 +160,7 @@ class ZaberStageIO(QtCore.QObject):
             else:
                 cur = float(dev.get_position(Units.ANGLE_DEGREES))
                 target = cur + float(delta_pos)
-                dev.move_absolute(target, Units.ANGLE_DEGREES)
+                dev.move_absolute(target, Units.ANGLE_DEGREES, timeout=1000)
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.ANGLE_DEGREES)

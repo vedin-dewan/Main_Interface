@@ -426,11 +426,12 @@ class MainWindow(QtWidgets.QMainWindow):
             # and when it was showing 'ENGAGE' and is clicked -> move to MAX. The previous state is
             # therefore the inverse of the new state.
             prev_was_bypass = bool(not engaged)
-            # User requested behavior: when it shows 'BYPASS' move to MAX; when it shows 'ENGAGE' move to MIN.
+            # New behavior: when the button showed 'BYPASS' (prev_was_bypass=True) move to MIN;
+            # when it showed 'ENGAGE' move to MAX.
             if prev_was_bypass:
-                target = sd_row.max.value()
-            else:
                 target = sd_row.min.value()
+            else:
+                target = sd_row.max.value()
             unit = 'mm'  # SD axes use mm in MotorInfo mapping; this should match part1 rows' unit if needed
             self.status_panel.append_line(f"PM{pm_index} bypass click (was {'BYPASS' if prev_was_bypass else 'ENGAGE'}) → moving SD (addr {addr}) to {target:.6f} {unit}")
             # schedule a move via req_abs (thread-safe queued signal)
