@@ -309,7 +309,7 @@ class PMPanel(QtWidgets.QWidget):
                         pass
             return None, None
 
-        # apply Zero and Microscope blocks
+        # apply only explicit Zero / Microscope blocks to avoid generic presets
         try:
             for key, payload in (data.items() if isinstance(data, dict) else []):
                 if not isinstance(payload, dict):
@@ -321,7 +321,11 @@ class PMPanel(QtWidgets.QWidget):
                 key_upper = str(key).upper()
                 is_zero = key_upper.startswith('ZERO PM')
                 is_mic = key_upper.startswith('MICROSCOPE PM')
-                # If neither, still process (some presets are generic and we may want to apply)
+
+                # Skip generic preset blocks (e.g., HOME ALL, Home PM3) to avoid overwriting
+                # explicit Zero/Microscope values which are authoritative for PM settings.
+                if not (is_zero or is_mic):
+                    continue
 
                 for st in stages:
                     try:
@@ -335,9 +339,6 @@ class PMPanel(QtWidgets.QWidget):
                             row.set_zero(float(pos))
                         elif is_mic:
                             row.set_mo(float(pos))
-                        else:
-                            # for general presets, prefer setting zero (conservative)
-                            row.set_zero(float(pos))
                     except Exception:
                         pass
         except Exception:
