@@ -225,8 +225,9 @@ class PMPanel(QtWidgets.QWidget):
         # wire bypass toggles to a panel-level signal with PM index
         try:
             for idx, mg in enumerate((self.pm1, self.pm2, self.pm3), start=1):
-                # mg.bypass is a ToggleBypassButton (checkable); emit index + new state
-                mg.bypass.toggled.connect(lambda checked, i=idx: self.bypass_clicked.emit(i, checked))
+                # mg.bypass is a ToggleBypassButton; it is non-checkable and we manage its visual state
+                # Emit the panel-level signal on click, passing the current visual engaged state
+                mg.bypass.clicked.connect(lambda _=None, i=idx, b=mg.bypass: self.bypass_clicked.emit(i, b.is_engaged()))
         except Exception:
             pass
 
