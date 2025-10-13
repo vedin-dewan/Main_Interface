@@ -214,6 +214,15 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int, float, float)
     def _on_position(self, address: int, steps: float, pos: float):
         self.part1.update_address(steps, pos, address)
+        # update PM panel Current display if any PM row references this address
+        try:
+            if hasattr(self, 'pm_panel') and self.pm_panel is not None:
+                try:
+                    self.pm_panel.update_current_by_address(address, pos)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(int, float)
     def _on_speed(self, address: int, speed: float):
