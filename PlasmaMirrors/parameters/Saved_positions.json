@@ -5,81 +5,97 @@
       {
         "name": "PM1R",
         "position": 0.0,
+        "stage_num": 1,
         "order": 14
       },
       {
         "name": "PM1Y",
         "position": 0.0,
+        "stage_num": 2,
         "order": 4
       },
       {
         "name": "PM1Z",
         "position": 0.0,
+        "stage_num": 3,
         "order": 3
       },
       {
         "name": "PM1D",
         "position": 0.0,
+        "stage_num": 4,
         "order": 2
       },
       {
         "name": "PM3Y",
         "position": 0.0,
+        "stage_num": 5,
         "order": 13
       },
       {
         "name": "PM3Z",
         "position": 0.0,
+        "stage_num": 6,
         "order": 11
       },
       {
         "name": "R2",
         "position": 0.0,
+        "stage_num": 7,
         "order": 15
       },
       {
         "name": "S1",
         "position": 0.0,
+        "stage_num": 0,
         "order": 5
       },
       {
         "name": "S2",
         "position": 0.0,
+        "stage_num": 9,
         "order": 6
       },
       {
         "name": "PM2D",
         "position": 0.0,
+        "stage_num": 10,
         "order": 7
       },
       {
         "name": "PM2Y",
         "position": 0.0,
+        "stage_num": 11,
         "order": 8
       },
       {
         "name": "PM2Z",
         "position": 0.0,
+        "stage_num": 12,
         "order": 9
       },
       {
         "name": "PM2X",
         "position": 0.0,
+        "stage_num": 13,
         "order": 10
       },
       {
         "name": "PM3X",
         "position": 0.0,
+        "stage_num": 14,
         "order": 12
       },
       {
         "name": "S3",
         "position": 70.0,
+        "stage_num": 15,
         "order": 1
       },
       {
         "name": "PG",
         "position": 0.0,
+        "stage_num": 16,
         "order": 16
       }
     ]
@@ -90,11 +106,13 @@
       {
         "name": "PM1R",
         "position": 40.000078124999995,
+        "stage_num": 1,
         "order": 2
       },
       {
         "name": "S3",
         "position": 70.0,
+        "stage_num": 15,
         "order": 1
       }
     ]
@@ -105,16 +123,19 @@
       {
         "name": "PM1R",
         "position":30.00,
+        "stage_num": 1,
         "order": 1
       },
       {
         "name": "PM1Y",
         "position": 70.0,
+        "stage_num": 2,
         "order": 2
       },
       {
         "name": "PM1Z",
         "position": 36.00,
+        "stage_num": 3,
         "order": 3
       }
     ]
@@ -125,16 +146,19 @@
       {
         "name": "PM2Y",
         "position":93.3693,
+        "stage_num": 11,
         "order": 2
       },
       {
         "name": "PM2Z",
         "position": 52.8200,
+        "stage_num": 12,
         "order": 1
       },
       {
         "name": "PM2X",
         "position": 70.13,
+        "stage_num": 13,
         "order": 3
       }
     ]
@@ -145,16 +169,19 @@
       {
         "name": "PM3Y",
         "position":110.12,
+        "stage_num": 5,
         "order": 1
       },
       {
         "name": "PM3Z",
         "position": 31.4169,
+        "stage_num": 6,
         "order": 2
       },
       {
         "name": "PM3X",
         "position": 28.50,
+        "stage_num": 14,
         "order": 3
       }
     ]
@@ -165,16 +192,19 @@
       {
         "name": "PM2Y",
         "position": 73.7820,
+        "stage_num": 11,
         "order": 2
       },
       {
         "name": "PM2Z",
         "position": 52.8808,
+        "stage_num": 12,
         "order": 1
       },
       {
         "name": "PM2X",
         "position": 36.3392,
+        "stage_num": 13,
         "order": 3
       }
         
@@ -186,16 +216,19 @@
       {
         "name": "PM3Y",
         "position": 96.8182,
+        "stage_num": 5,
         "order": 1
       },
       {
         "name": "PM3Z",
         "position": 43.9982,
+        "stage_num": 6,
         "order": 2
       },
       {
         "name": "PM3X",
         "position": 69.8897,
+        "stage_num": 14,
         "order": 3
       }
         
@@ -207,16 +240,19 @@
       {
         "name": "PM3Y",
         "position": 0,
+        "stage_num": 5,
         "order": 2
       },
       {
         "name": "PM3Z",
         "position": 0,
+        "stage_num": 6,
         "order": 1
       },
       {
         "name": "PM3X",
         "position": 0,
+        "stage_num": 14,
         "order": 3
       }
         

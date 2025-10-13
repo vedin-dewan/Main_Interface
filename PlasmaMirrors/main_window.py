@@ -46,7 +46,7 @@ class MainWindow(QtWidgets.QMainWindow):
             MotorInfo("PM2D",  "PM2 Redirect",     2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
             MotorInfo("PM2Y",  "PM2 Y Scan",       1_526_940, 151.501, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
             MotorInfo("PM2Z",  "PM2 Z Scan",         771_029, 76.5005, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM2V",  "PM2 Vertical",     2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
+            MotorInfo("PM2X",  "PM2 Vertical",     2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
             MotorInfo("PM3X",  "PM3 Vertical",     2_133_334, 76.5005, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
             MotorInfo("S3",    "HeNe",             2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
             MotorInfo("PG",    "Plasma",           2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),

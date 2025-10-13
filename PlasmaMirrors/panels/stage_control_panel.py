@@ -350,14 +350,17 @@ class StageControlPanel(QtWidgets.QWidget):
 
         # Table: Num | Name | Position | Order
         self.saved_table.setRowCount(0)
-        for i, st in enumerate(block.get("stages", []), start=1):
+        for idx, st in enumerate(block.get("stages", []), start=1):
             name = st.get("name", "")
             pos  = st.get("position", "")
             order = st.get("order", "")
+            stage_num = st.get("stage_num")
 
             row = self.saved_table.rowCount()
             self.saved_table.insertRow(row)
-            self.saved_table.setItem(row, 0, QtWidgets.QTableWidgetItem(str(i)))
+            # If stage_num present in JSON use it, otherwise fall back to sequential idx
+            num_display = str(stage_num) if stage_num is not None else str(idx)
+            self.saved_table.setItem(row, 0, QtWidgets.QTableWidgetItem(num_display))
             self.saved_table.setItem(row, 1, QtWidgets.QTableWidgetItem(str(name)))
             # Format numeric positions nicely; otherwise show as-is
             if isinstance(pos, (int, float)):
