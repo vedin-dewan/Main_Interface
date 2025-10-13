@@ -136,6 +136,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage.bounds.connect(self._on_bounds)
         self.io_thread.start()
 
+        # track pending bypass moves: addr -> pm_index
+        self._pending_bypass_moves = {}
+
         # --- Fire I/O thread ---
         self.fire_thread = QtCore.QThread(self)
         cfg = FireConfig(
@@ -264,6 +267,20 @@ class MainWindow(QtWidgets.QMainWindow):
             f"Move complete on Address {address}: {final_pos:.{prec}f} {unit} (reading back...)"
         )
         self.req_read.emit(address, unit)
+        # if this address was a pending bypass move, flip the bypass button visual for that PM
+        try:
+            pm_index = self._pending_bypass_moves.pop(int(address), None)
+            if pm_index is not None:
+                try:
+                    mg = [self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3][pm_index - 1]
+                    # toggle the visual engaged state
+                    new_state = not mg.bypass.is_engaged()
+                    mg.bypass.set_engaged(new_state)
+                    self.status_panel.append_line(f"PM{pm_index} bypass visual updated after move → {'ENGAGE' if new_state else 'BYPASS'}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_move_absolute(self, address: int, target_pos: float):
@@ -417,6 +434,11 @@ class MainWindow(QtWidgets.QMainWindow):
             unit = 'mm'  # SD axes use mm in MotorInfo mapping; this should match part1 rows' unit if needed
             self.status_panel.append_line(f"PM{pm_index} bypass click (was {'BYPASS' if prev_was_bypass else 'ENGAGE'}) → moving SD (addr {addr}) to {target:.6f} {unit}")
             # schedule a move via req_abs (thread-safe queued signal)
+            # record as pending so we flip the bypass visual only after the move completes
+            try:
+                self._pending_bypass_moves[int(addr)] = int(pm_index)
+            except Exception:
+                pass
             self.req_abs.emit(addr, float(target), unit)
         except Exception as e:
             try: self.status_panel.append_line(f"Failed to handle PM bypass click: {e}")

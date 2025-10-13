@@ -9,9 +9,10 @@ class ToggleBypassButton(QtWidgets.QPushButton):
     """Right-bottom BYPASS/ENGAGE toggle button."""
     def __init__(self, parent=None):
         super().__init__("BYPASS", parent)
-        self.setCheckable(True)
-        self._apply_style(False)
-        self.toggled.connect(self._apply_style)
+        # Do not use automatic checkable toggle; we manage visual state programmatically
+        self.setCheckable(False)
+        self._engaged = False
+        self._apply_style(self._engaged)
         self.setFixedHeight(26)
 
     def _apply_style(self, engaged: bool):
@@ -27,6 +28,16 @@ class ToggleBypassButton(QtWidgets.QPushButton):
             self.setStyleSheet(
                 "background:#2f7a4a; color:#fff; border:1px solid #4ea36b; font-weight:700; border-radius:6px;"
             )
+
+    def is_engaged(self) -> bool:
+        return bool(self._engaged)
+
+    def set_engaged(self, engaged: bool) -> None:
+        try:
+            self._engaged = bool(engaged)
+            self._apply_style(self._engaged)
+        except Exception:
+            pass
 
 class PMStageRow(QtWidgets.QWidget):
     """One row: RX / Y / Z / SD with Min, Max, Zero Pos, MO Pos, Current, Direction.
