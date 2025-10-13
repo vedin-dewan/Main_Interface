@@ -48,11 +48,24 @@ class PMStageRow(QtWidgets.QWidget):
         self.min = QtWidgets.QDoubleSpinBox(); self.min.setDecimals(3); self.min.setRange(-9999, 9999); self.min.setFixedWidth(70)
         self.max = QtWidgets.QDoubleSpinBox(); self.max.setDecimals(3); self.max.setRange(-9999, 9999); self.max.setFixedWidth(70)
         grid.addWidget(self.min, 0, 2); grid.addWidget(self.max, 0, 3)
-        # Zero Pos / MO Pos / Current
-        self.zero = QtWidgets.QDoubleSpinBox(); self.zero.setDecimals(3); self.zero.setRange(-9999, 9999); self.zero.setFixedWidth(70)
-        self.mo   = QtWidgets.QDoubleSpinBox(); self.mo.setDecimals(3);   self.mo.setRange(-9999, 9999);   self.mo.setFixedWidth(70)
-        self.cur  = QtWidgets.QDoubleSpinBox(); self.cur.setDecimals(3);  self.cur.setRange(-9999, 9999);  self.cur.setFixedWidth(70)
-        grid.addWidget(self.zero, 0, 4); grid.addWidget(self.mo, 0, 5); grid.addWidget(self.cur, 0, 6)
+        # Zero Pos / MO Pos / Current (read-only labels)
+        self.zero_label = QtWidgets.QLabel("0.000")
+        self.zero_label.setFixedWidth(70)
+        self.zero_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.zero_label.setStyleSheet("background:#2a2a2a; padding:2px; border-radius:4px;")
+
+        self.mo_label = QtWidgets.QLabel("0.000")
+        self.mo_label.setFixedWidth(70)
+        self.mo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.mo_label.setStyleSheet("background:#2a2a2a; padding:2px; border-radius:4px;")
+
+        self.cur_label = QtWidgets.QLabel("0.000")
+        self.cur_label.setFixedWidth(70)
+        self.cur_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.cur_label.setStyleSheet("background:#2a2a2a; padding:2px; border-radius:4px;")
+
+        grid.addWidget(self.zero_label, 0, 4); grid.addWidget(self.mo_label, 0, 5); grid.addWidget(self.cur_label, 0, 6)
+
         # Direction (only if enabled)
         if direction_enabled:
             self.dir = QtWidgets.QComboBox(); self.dir.addItems(["Pos", "Neg"]); self.dir.setFixedWidth(70)
@@ -62,6 +75,43 @@ class PMStageRow(QtWidgets.QWidget):
             spacer = QtWidgets.QLabel("")
             spacer.setFixedWidth(70)
             grid.addWidget(spacer, 0, 7)
+
+    # helpers for label-backed fields
+    def set_zero(self, value: float):
+        try:
+            self.zero_label.setText(f"{float(value):.3f}")
+        except Exception:
+            self.zero_label.setText("0.000")
+
+    def get_zero(self) -> float:
+        try:
+            return float(self.zero_label.text())
+        except Exception:
+            return 0.0
+
+    def set_mo(self, value: float):
+        try:
+            self.mo_label.setText(f"{float(value):.3f}")
+        except Exception:
+            self.mo_label.setText("0.000")
+
+    def get_mo(self) -> float:
+        try:
+            return float(self.mo_label.text())
+        except Exception:
+            return 0.0
+
+    def set_current(self, value: float):
+        try:
+            self.cur_label.setText(f"{float(value):.3f}")
+        except Exception:
+            self.cur_label.setText("0.000")
+
+    def get_current(self) -> float:
+        try:
+            return float(self.cur_label.text())
+        except Exception:
+            return 0.0
 
 class PMMirrorGroup(QtWidgets.QGroupBox):
     def __init__(self, title: str, parent=None):
@@ -100,8 +150,16 @@ class PMMirrorGroup(QtWidgets.QGroupBox):
         hdr.setHorizontalSpacing(6)
         header_labels = ["Stage", "Min", "Max", "Zero Pos", "MO Pos", "Current", "Direction"]
         hdr.addWidget(QtWidgets.QLabel(""), 0, 0)  # empty for RX/Y/Z/SD label col
+        # target fixed widths (match widget widths in PMStageRow)
+        col_widths = {1: 40, 2: 70, 3: 70, 4: 70, 5: 70, 6: 70, 7: 70}
         for i, t in enumerate(header_labels, start=1):
-            lab = QtWidgets.QLabel(t); lab.setStyleSheet("color:#cfcfcf;")
+            lab = QtWidgets.QLabel(t)
+            lab.setStyleSheet("color:#cfcfcf;")
+            # apply width hint if available so header aligns with columns
+            w = col_widths.get(i)
+            if w is not None:
+                lab.setFixedWidth(w)
+                lab.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             hdr.addWidget(lab, 0, i)
 
         # --- Four rows (Direction only for RX & Y) ---
@@ -154,6 +212,168 @@ class PMPanel(QtWidgets.QWidget):
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setMinimumWidth(520)
         self.setMaximumWidth(700)
+        # saved positions file path (parameters/Saved_positions.json)
+        self._saved_values_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'parameters', 'Saved_positions.json'))
+        self._watcher = QtCore.QFileSystemWatcher(self)
+        try:
+            # watch file or directory so creation/deletion is detected
+            if os.path.exists(self._saved_values_path):
+                self._watcher.addPath(self._saved_values_path)
+            else:
+                self._watcher.addPath(os.path.dirname(self._saved_values_path))
+            self._watcher.fileChanged.connect(self._on_saved_values_changed)
+            self._watcher.directoryChanged.connect(self._on_saved_values_changed)
+        except Exception:
+            pass
+        # small delay to allow UI init, then load
+        QtCore.QTimer.singleShot(100, self._load_saved_values)
+
+    def _on_saved_values_changed(self, path: str) -> None:
+        # Debounce multiple events
+        QtCore.QTimer.singleShot(50, self._load_saved_values)
+
+    def _load_saved_values(self) -> None:
+        """Load zero / MO values from parameters/Saved_positions.json.
+        Supported formats:
+        1) Direct mapping:
+           { "Zero PM1": {"RX":1.23, "Y":2.34, ...}, "Microscope PM1": {...} }
+        2) Preset-with-stages (current Saved_positions.json style):
+           { "Preset Name": { "stages": [ {"name":"PM1R","position":...}, ... ] }, ... }
+
+        The loader will look for keys named 'Zero PMn' and 'Microscope PMn'.
+        When a preset provides a 'stages' list, stage names like 'PM1R','PM1Y','PM1Z','PM1D'
+        are mapped to labels RX, Y, Z, SD respectively (best-effort suffix mapping).
+        """
+        try:
+            if not os.path.exists(self._saved_values_path):
+                return
+            with open(self._saved_values_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return
+
+        def apply_direct_map(mg, mapping_source):
+            # mapping_source expected to be a dict mapping labels to numeric values
+            mapping = {'RX': mg.row_rx, 'Y': mg.row_y, 'Z': mg.row_z, 'SD': mg.row_sd}
+            if not isinstance(mapping_source, dict):
+                return
+            for label, row in mapping.items():
+                try:
+                    if label in mapping_source:
+                        row.set_zero(float(mapping_source[label]))
+                except Exception:
+                    pass
+
+        def apply_preset_stages(mg, preset_obj):
+            # preset_obj expected to be dict with 'stages' list of {name, position}
+            if not isinstance(preset_obj, dict):
+                return
+            stages = preset_obj.get('stages', [])
+            if not isinstance(stages, list):
+                return
+            # walk stages and map names to RX/Y/Z/SD via suffix heuristic
+            for st in stages:
+                try:
+                    name = str(st.get('name', ''))
+                    pos = st.get('position', None)
+                    if pos is None:
+                        continue
+                    # normalize
+                    nm = name.upper()
+                    # heuristics: look for trailing character
+                    if nm.startswith('PM') and len(nm) >= 4:
+                        suffix = nm[3:]
+                    else:
+                        suffix = nm[-1:]
+                    # choose mapping
+                    if suffix.startswith('R'):
+                        mg.row_rx.set_zero(float(pos))
+                    elif 'Y' in suffix:
+                        mg.row_y.set_zero(float(pos))
+                    elif 'Z' in suffix:
+                        mg.row_z.set_zero(float(pos))
+                    elif 'D' in suffix or 'S' in suffix:
+                        # treat D or S as SD/redirect
+                        mg.row_sd.set_zero(float(pos))
+                except Exception:
+                    pass
+
+        # Now try to apply keys for PM1/PM2/PM3
+        try:
+            for idx in range(3):
+                mg = [self.pm1, self.pm2, self.pm3][idx]
+                zero_key = f'Zero PM{idx+1}'
+                mo_key = f'Microscope PM{idx+1}'
+
+                # direct label mapping
+                zero_val = data.get(zero_key)
+                if zero_val is not None:
+                    apply_direct_map(mg, zero_val)
+                else:
+                    # search for preset with this name and stages list
+                    preset = data.get(zero_key)
+                    if preset is not None and isinstance(preset, dict) and 'stages' in preset:
+                        apply_preset_stages(mg, preset)
+                    else:
+                        # fallback: scan top-level presets for one whose stages mention PM{n}
+                        for key, val in data.items():
+                            if not isinstance(val, dict):
+                                continue
+                            stages = val.get('stages')
+                            if not isinstance(stages, list):
+                                continue
+                            # if any stage name contains 'PM{n}', use this preset
+                            if any(isinstance(s, dict) and isinstance(s.get('name'), str) and f'PM{idx+1}' in s.get('name', '') for s in stages):
+                                apply_preset_stages(mg, val)
+                                break
+
+                # MO values
+                mo_val = data.get(mo_key)
+                if mo_val is not None:
+                    # direct mapping
+                    if isinstance(mo_val, dict):
+                        for label, row in {'RX': mg.row_rx, 'Y': mg.row_y, 'Z': mg.row_z, 'SD': mg.row_sd}.items():
+                            try:
+                                if label in mo_val:
+                                    row.set_mo(float(mo_val[label]))
+                            except Exception:
+                                pass
+                    # preset form
+                    elif isinstance(mo_val, dict) and 'stages' in mo_val:
+                        # treat similar to preset
+                        apply_preset_stages(mg, mo_val)
+                else:
+                    # fallback search
+                    for key, val in data.items():
+                        if not isinstance(val, dict):
+                            continue
+                        stages = val.get('stages')
+                        if not isinstance(stages, list):
+                            continue
+                        if any(isinstance(s, dict) and isinstance(s.get('name'), str) and f'PM{idx+1}' in s.get('name', '') for s in stages):
+                            # try to find microscope-prefixed keys
+                            # we'll reuse apply_preset_stages to pull positions into MO fields
+                            apply_preset_stages(mg, val)
+                            break
+        except Exception:
+            pass
+
+    def update_current_by_address(self, address: int, value: float) -> None:
+        """Update the Current label for the row corresponding to a Zaber stage address.
+        The mapping uses the stage_num configured in each PM mirror group rows.
+        """
+        try:
+            # search across pm1/pm2/pm3 rows
+            for mg in (self.pm1, self.pm2, self.pm3):
+                for r in (mg.row_rx, mg.row_y, mg.row_z, mg.row_sd):
+                    try:
+                        if int(r.stage_num.value()) == int(address):
+                            r.set_current(float(value))
+                            return
+                    except Exception:
+                        continue
+        except Exception:
+            return
 
     # --- Persistence helpers -------------------------------------------------
     def _mirror_group_to_dict(self, mg: 'PMMirrorGroup') -> dict:
@@ -163,9 +383,9 @@ class PMPanel(QtWidgets.QWidget):
                 'stage_num': r.stage_num.value(),
                 'min': r.min.value(),
                 'max': r.max.value(),
-                'zero': r.zero.value(),
-                'mo': r.mo.value(),
-                'cur': r.cur.value(),
+                'zero': r.get_zero(),
+                'mo': r.get_mo(),
+                'cur': r.get_current(),
                 'dir': (r.dir.currentIndex() if getattr(r, 'dir', None) is not None else None)
             }
 
@@ -202,11 +422,11 @@ class PMPanel(QtWidgets.QWidget):
                 except Exception: pass
                 try: r.max.setValue(float(d.get('max', r.max.value())))
                 except Exception: pass
-                try: r.zero.setValue(float(d.get('zero', r.zero.value())))
+                try: r.set_zero(float(d.get('zero', r.get_zero())))
                 except Exception: pass
-                try: r.mo.setValue(float(d.get('mo', r.mo.value())))
+                try: r.set_mo(float(d.get('mo', r.get_mo())))
                 except Exception: pass
-                try: r.cur.setValue(float(d.get('cur', r.cur.value())))
+                try: r.set_current(float(d.get('cur', r.get_current())))
                 except Exception: pass
                 if getattr(r, 'dir', None) is not None:
                     idx = d.get('dir', None)
