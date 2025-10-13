@@ -85,7 +85,17 @@ class MainWindow(QtWidgets.QMainWindow):
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
 
-        self.setCentralWidget(central)
+        # Make the central area scrollable so the user can resize the main window
+        # arbitrarily and scroll horizontally/vertically when parts are cut off.
+        scroll = QtWidgets.QScrollArea()
+        # ensure the inner widget keeps its preferred size so scrollbars appear
+        central.adjustSize()
+        central.setMinimumSize(central.sizeHint())
+        scroll.setWidget(central)
+        scroll.setWidgetResizable(False)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setCentralWidget(scroll)
 
         # --- Load PM panel settings (if present) -------------------------
         try:
