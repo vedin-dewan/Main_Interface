@@ -1,5 +1,8 @@
+# panels/fire_controls_panel.py
 from __future__ import annotations
 from PyQt6 import QtCore, QtWidgets
+
+# panels/fire_controls_panel.py
 from PyQt6 import QtCore, QtWidgets
 
 class FireControlsPanel(QtWidgets.QWidget):
@@ -39,41 +42,16 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.spin_shots.setFixedWidth(100)
         self.spin_shots.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
+        hint = QtWidgets.QLabel("(press Fire to start)")
+        hint.setStyleSheet("color:#888;")
+
         shots_row = QtWidgets.QHBoxLayout()
         shots_row.addWidget(lab_shots)
         shots_row.addWidget(self.spin_shots)
+        shots_row.addSpacing(12)
+        shots_row.addWidget(hint)
         shots_row.addStretch(1)
         g.addLayout(shots_row, 0, 1, 1, 2)
-
-        # ----- Interval (ms) -----
-        lab_interval = QtWidgets.QLabel("Interval (ms):")
-        self.spin_interval = QtWidgets.QSpinBox()
-        self.spin_interval.setRange(1, 1_000_000)  # 1 ms to 1000 s
-        self.spin_interval.setValue(100)           # default 100 ms
-        self.spin_interval.setFixedWidth(100)
-        self.spin_interval.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-
-        interval_row = QtWidgets.QHBoxLayout()
-        interval_row.addWidget(lab_interval)
-        interval_row.addWidget(self.spin_interval)
-        interval_row.addStretch(1)
-        g.addLayout(interval_row, 1, 1, 1, 2)
-
-        # ----- Shot Counter (read-only display) -----
-        lab_counter = QtWidgets.QLabel("Shot Counter:")
-        self.disp_counter = QtWidgets.QSpinBox()
-        self.disp_counter.setRange(0, 9_999_999)
-        self.disp_counter.setValue(0)
-        self.disp_counter.setReadOnly(True)
-        self.disp_counter.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.disp_counter.setFixedWidth(100)
-        self.disp_counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-
-        counter_row = QtWidgets.QHBoxLayout()
-        counter_row.addWidget(lab_counter)
-        counter_row.addWidget(self.disp_counter)
-        counter_row.addStretch(1)
-        g.addLayout(counter_row, 2, 1, 1, 2)
 
         # Big Fire button spanning the width
         self.btn_fire = QtWidgets.QPushButton("Fire")
@@ -81,11 +59,11 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.btn_fire.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                                     QtWidgets.QSizePolicy.Policy.Fixed)
         self.btn_fire.setStyleSheet("background:#D30000; color:white; font-weight:700;")
-        g.addWidget(self.btn_fire, 3, 1, 1, 2)
+        g.addWidget(self.btn_fire, 1, 1, 1, 2)
 
         # Status line
         self.lab_status = QtWidgets.QLabel("Ready")
-        g.addWidget(self.lab_status, 4, 0, 1, 3)
+        g.addWidget(self.lab_status, 2, 0, 1, 3)
 
         # column stretch so the button gets space
         g.setColumnStretch(0, 1)

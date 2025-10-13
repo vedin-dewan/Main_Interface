@@ -1,0 +1,32 @@
+{
+  "HOME ALL": {
+    "last_saved_time": "2025-10-09T16:53:35",
+    "stages": [
+      {
+        "name": "PRB",
+        "position": 0.0,
+        "order": 1
+      },
+      {
+        "name": "PMP",
+        "position": 0.0,
+        "order": 2
+      },
+      {
+        "name": "IFR",
+        "position": 0.0,
+        "order": 3
+      }
+    ]
+  },
+  "Last position": {
+    "last_saved_time": "2025-10-09T15:16:47",
+    "stages": [
+      {
+        "name": "PRB",
+        "position": 40.0000,
+        "order": 1
+      }
+    ]
+  }
+}

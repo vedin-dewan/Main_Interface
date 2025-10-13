@@ -10,6 +10,9 @@ from panels.PM_panel import PMPanel
 from panels.fire_controls_panel import FireControlsPanel
 from device_io.kinesis_fire_io import KinesisFireIO, FireConfig
 from panels.placeholder_panel import PlaceholderPanel
+from panels.overall_control_panel import SavingPanel
+import os
+import json
 
 PORT = "COM8"; BAUD = 115200
 
@@ -27,7 +30,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Zaber GUI")
+        self.setWindowTitle("Plasma Mirrors GUI")
         self.resize(920, 720)
 
         motors = [
@@ -49,7 +52,7 @@ class MainWindow(QtWidgets.QMainWindow):
             MotorInfo("PG",    "Plasma",           2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
         ]
 
-        self.overall_controls = PlaceholderPanel("Overall Controls")
+        self.overall_controls = SavingPanel()
         self.fire_panel    = FireControlsPanel()
         self.pm_panel= PMPanel()
         self.part1 = MotorStatusPanel(motors)
@@ -158,6 +161,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.part2.request_set_lbound.connect(self._on_request_set_lbound)
         self.part2.request_set_ubound.connect(self._on_request_set_ubound)
 
+        self.part2.request_move_to_saved.connect(self._on_request_move_to_saved)
+        self._saved_move_queue = []
+        self._saved_move_active = False
+
         # style
         self.setStyleSheet(
             "QWidget { background-color: #1e1e1e; color: #e6e6e6; font-size: 12px; }"
@@ -260,6 +267,89 @@ class MainWindow(QtWidgets.QMainWindow):
         unit = self.part1.rows[address - 1].info.unit
         self.status_panel.append_line(f"Set upper bound requested → Address {address}: {new_ubound:.6f} {unit}")
         self.req_set_ubound.emit(address, new_ubound, unit)
+    
+    @QtCore.pyqtSlot(str)
+    def _on_request_move_to_saved(self, preset_name: str):
+        """
+        Read Saved_positions.json, find the block by name, and queue moves in its 'order'.
+        Moves run one-by-one using the existing StageIO.move_absolute (blocking in I/O thread).
+        """
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        filename= os.path.join(base_dir, "parameters/Saved_positions.json")
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            self.status_panel.append_line(f"Move-to-saved failed: cannot read {filename}: {e}")
+            return
+
+        if preset_name not in data:
+            self.status_panel.append_line(f'Move-to-saved: preset "{preset_name}" not found.')
+            return
+
+        payload = data[preset_name]
+        stages = payload.get("stages", [])
+        if not stages:
+            self.status_panel.append_line(f'Move-to-saved: preset "{preset_name}" has no stages.')
+            return
+
+        # Build an ordered queue: [(address, target_mm), ...]
+        # Map stage 'name' to our Part1 rows by row.info.short and take row.index as address.
+        try:
+            # keep defined order field; default to large if missing
+            ordered = sorted(stages, key=lambda s: s.get("order", 10**9))
+        except Exception:
+            ordered = stages
+
+        queue = []
+        for st in ordered:
+            name = str(st.get("name", "")).strip()
+            pos  = st.get("position", None)
+            if name == "" or pos is None:
+                continue
+            # find matching row by short name
+            row = next((r for r in self.part1.rows if r.info.short == name), None)
+            if row is None:
+                self.status_panel.append_line(f'  ↳ Skipping "{name}" (no matching stage in Part 1).')
+                continue
+            address = getattr(row, "index", None)
+            if not isinstance(address, int):
+                self.status_panel.append_line(f'  ↳ Skipping "{name}" (invalid address mapping).')
+                continue
+            try:
+                target_mm = float(pos)
+            except Exception:
+                self.status_panel.append_line(f'  ↳ Skipping "{name}" (position not numeric).')
+                continue
+            queue.append((address, target_mm))
+
+        if not queue:
+            self.status_panel.append_line(f'Move-to-saved: nothing to do for "{preset_name}".')
+            return
+
+        # Start queued execution
+        self._saved_move_queue = queue
+        self._saved_move_active = True
+        self.status_panel.append_line(f'Move-to-saved "{preset_name}": queued {len(queue)} move(s).')
+        self._dequeue_and_move_next()
+
+    def _dequeue_and_move_next(self):
+        """Kick off the next move in the queue, or finish if empty."""
+        if not self._saved_move_active:
+            return
+        if not self._saved_move_queue:
+            self._saved_move_active = False
+            self.status_panel.append_line("Move-to-saved: sequence complete.")
+            return
+        address, target_pos = self._saved_move_queue.pop(0)
+        unit = self.part1.rows[address - 1].info.unit
+        self.status_panel.append_line(f" → Moving Address {address} to {target_pos:.6f} {unit}")
+        try:
+            self.stage.move_absolute(address, target_pos, unit)  # runs in StageIO thread, emits 'moved' + 'position'
+        except Exception as e:
+            self.status_panel.append_line(f"Move error on Address {address}: {e}")
+        # attempt to keep going
+        QtCore.QTimer.singleShot(0, self._dequeue_and_move_next)
 
     def closeEvent(self, a0: QtGui.QCloseEvent | None) -> None:
         try:

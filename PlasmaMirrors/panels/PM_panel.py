@@ -64,6 +64,9 @@ class PMMirrorGroup(QtWidgets.QGroupBox):
     def __init__(self, title: str, parent=None):
         super().__init__("", parent)
         self.setStyleSheet("QGroupBox{font-weight:700;}")
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed,
+                           QtWidgets.QSizePolicy.Policy.Preferred)
+        self.setFixedWidth(580)
 
         # --- Top header: labels row + widgets row (to match screenshot) ---
         top = QtWidgets.QGridLayout()
@@ -145,6 +148,6 @@ class PMPanel(QtWidgets.QWidget):
         v.addStretch(1)
 
         # Match app style
-        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setMinimumWidth(520)
         self.setMaximumWidth(700)
