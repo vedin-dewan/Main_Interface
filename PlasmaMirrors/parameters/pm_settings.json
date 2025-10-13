@@ -4,7 +4,7 @@
     "auto": true,
     "dist": 0.75,
     "target_type": 0,
-    "bypass": false,
+    "bypass": true,
     "rows": {
       "rx": {
         "stage_num": 1,
@@ -39,7 +39,7 @@
         "max": 100.0,
         "zero": 0.0,
         "mo": 0.0,
-        "cur": 101.6,
+        "cur": 0.0,
         "dir": null
       }
     }
@@ -134,5 +134,5 @@
       }
     }
   },
-  "saved_time": "2025-10-13T12:40:31"
+  "saved_time": "2025-10-13T12:46:17"
 }
