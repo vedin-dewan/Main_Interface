@@ -87,6 +87,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.setCentralWidget(central)
 
+        # --- Load PM panel settings (if present) -------------------------
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            pm_file = os.path.join(base_dir, "parameters/pm_settings.json")
+            # Pass status_panel.append_line as logger callback to get feedback in UI
+            try:
+                self.pm_panel.load_from_file(pm_file, logger=self.status_panel.append_line)
+            except Exception:
+                # status_panel may not yet be set up — try again slightly later
+                QtCore.QTimer.singleShot(50, lambda: getattr(self.pm_panel, 'load_from_file', lambda *a, **k: None)(pm_file, logger=getattr(self.status_panel, 'append_line', None)))
+        except Exception:
+            pass
+
         # --- Stage I/O thread ---
         self.io_thread = QtCore.QThread(self)
         self.stage = ZaberStageIO(PORT, BAUD)
@@ -373,3 +386,15 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
         super().closeEvent(a0)
+        # Save PM panel settings on exit (best-effort)
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            pm_file = os.path.join(base_dir, "parameters/pm_settings.json")
+            try:
+                self.pm_panel.save_to_file(pm_file, logger=self.status_panel.append_line)
+            except Exception:
+                # fallback: attempt without logger
+                try: self.pm_panel.save_to_file(pm_file)
+                except Exception: pass
+        except Exception:
+            pass

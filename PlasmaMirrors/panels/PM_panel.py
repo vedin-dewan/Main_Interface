@@ -1,6 +1,9 @@
 from PyQt6 import QtCore, QtWidgets
 from widgets.motor_row import MotorRow
 from widgets.round_light import RoundLight
+import json
+import os
+from typing import Callable, Optional
 
 class ToggleBypassButton(QtWidgets.QPushButton):
     """Right-bottom BYPASS/ENGAGE toggle button."""
@@ -151,3 +154,121 @@ class PMPanel(QtWidgets.QWidget):
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setMinimumWidth(520)
         self.setMaximumWidth(700)
+
+    # --- Persistence helpers -------------------------------------------------
+    def _mirror_group_to_dict(self, mg: 'PMMirrorGroup') -> dict:
+        """Serialize one PMMirrorGroup to a plain dict."""
+        def row_to_dict(r: 'PMStageRow'):
+            return {
+                'stage_num': r.stage_num.value(),
+                'min': r.min.value(),
+                'max': r.max.value(),
+                'zero': r.zero.value(),
+                'mo': r.mo.value(),
+                'cur': r.cur.value(),
+                'dir': (r.dir.currentIndex() if getattr(r, 'dir', None) is not None else None)
+            }
+
+        return {
+            'name': mg.name.text(),
+            'auto': bool(mg.auto.isChecked()),
+            'dist': mg.dist.value(),
+            'target_type': mg.target_type.currentIndex(),
+            'bypass': bool(mg.bypass.isChecked()),
+            'rows': {
+                'rx': row_to_dict(mg.row_rx),
+                'y': row_to_dict(mg.row_y),
+                'z': row_to_dict(mg.row_z),
+                'sd': row_to_dict(mg.row_sd),
+            }
+        }
+
+    def _dict_to_mirror_group(self, mg: 'PMMirrorGroup', data: dict) -> None:
+        """Apply a previously-saved dict to a PMMirrorGroup instance."""
+        try:
+            mg.name.setText(str(data.get('name', mg.name.text())))
+            mg.auto.setChecked(bool(data.get('auto', mg.auto.isChecked())))
+            mg.dist.setValue(float(data.get('dist', mg.dist.value())))
+            mg.target_type.setCurrentIndex(int(data.get('target_type', mg.target_type.currentIndex())))
+            mg.bypass.setChecked(bool(data.get('bypass', mg.bypass.isChecked())))
+
+            rows = data.get('rows', {}) or {}
+            def apply_row(r: 'PMStageRow', d: dict):
+                if not isinstance(d, dict):
+                    return
+                try: r.stage_num.setValue(int(d.get('stage_num', r.stage_num.value())))
+                except Exception: pass
+                try: r.min.setValue(float(d.get('min', r.min.value())))
+                except Exception: pass
+                try: r.max.setValue(float(d.get('max', r.max.value())))
+                except Exception: pass
+                try: r.zero.setValue(float(d.get('zero', r.zero.value())))
+                except Exception: pass
+                try: r.mo.setValue(float(d.get('mo', r.mo.value())))
+                except Exception: pass
+                try: r.cur.setValue(float(d.get('cur', r.cur.value())))
+                except Exception: pass
+                if getattr(r, 'dir', None) is not None:
+                    idx = d.get('dir', None)
+                    if isinstance(idx, int):
+                        try: r.dir.setCurrentIndex(idx)
+                        except Exception: pass
+
+            apply_row(mg.row_rx, rows.get('rx', {}))
+            apply_row(mg.row_y,  rows.get('y',  {}))
+            apply_row(mg.row_z,  rows.get('z',  {}))
+            apply_row(mg.row_sd, rows.get('sd', {}))
+        except Exception:
+            # be defensive: don't let corrupted settings break the UI
+            return
+
+    def get_state(self) -> dict:
+        """Return the full PM panel state as a JSON-serializable dict."""
+        return {
+            'pm1': self._mirror_group_to_dict(self.pm1),
+            'pm2': self._mirror_group_to_dict(self.pm2),
+            'pm3': self._mirror_group_to_dict(self.pm3),
+            'saved_time': QtCore.QDateTime.currentDateTime().toString(QtCore.Qt.DateFormat.ISODate)
+        }
+
+    def set_state(self, data: dict) -> None:
+        """Apply a state dict to the UI. Silently ignores missing/invalid fields."""
+        if not isinstance(data, dict):
+            return
+        self._dict_to_mirror_group(self.pm1, data.get('pm1', {}))
+        self._dict_to_mirror_group(self.pm2, data.get('pm2', {}))
+        self._dict_to_mirror_group(self.pm3, data.get('pm3', {}))
+
+    def save_to_file(self, filename: str, logger: Optional[Callable] = None) -> None:
+        try:
+            d = self.get_state()
+            folder = os.path.dirname(filename)
+            if folder and not os.path.exists(folder):
+                os.makedirs(folder, exist_ok=True)
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(d, f, indent=2)
+            if logger:
+                try: logger(f"PM settings saved → {filename}")
+                except Exception: pass
+        except Exception as e:
+            if logger:
+                try: logger(f"PM settings save failed: {e}")
+                except Exception: pass
+
+    def load_from_file(self, filename: str, logger: Optional[Callable] = None) -> None:
+        try:
+            if not os.path.exists(filename):
+                if logger:
+                    try: logger(f"PM settings not found (will use defaults): {filename}")
+                    except Exception: pass
+                return
+            with open(filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            self.set_state(data)
+            if logger:
+                try: logger(f"PM settings loaded ← {filename}")
+                except Exception: pass
+        except Exception as e:
+            if logger:
+                try: logger(f"PM settings load failed: {e}")
+                except Exception: pass

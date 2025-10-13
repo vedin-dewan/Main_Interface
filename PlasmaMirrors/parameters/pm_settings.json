@@ -1,0 +1,138 @@
+{
+  "pm1": {
+    "name": "Plasma Mirror 1",
+    "auto": true,
+    "dist": 0.5,
+    "target_type": 0,
+    "bypass": false,
+    "rows": {
+      "rx": {
+        "stage_num": 2,
+        "min": 10.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": 0
+      },
+      "y": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": 0
+      },
+      "z": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": null
+      },
+      "sd": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": null
+      }
+    }
+  },
+  "pm2": {
+    "name": "Plasma Mirror 2",
+    "auto": true,
+    "dist": 0.5,
+    "target_type": 0,
+    "bypass": false,
+    "rows": {
+      "rx": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": 0
+      },
+      "y": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": 0
+      },
+      "z": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": null
+      },
+      "sd": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": null
+      }
+    }
+  },
+  "pm3": {
+    "name": "Plasma Mirror 3",
+    "auto": true,
+    "dist": 0.5,
+    "target_type": 0,
+    "bypass": false,
+    "rows": {
+      "rx": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": 0
+      },
+      "y": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": 0
+      },
+      "z": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": null
+      },
+      "sd": {
+        "stage_num": 0,
+        "min": 0.0,
+        "max": 0.0,
+        "zero": 0.0,
+        "mo": 0.0,
+        "cur": 0.0,
+        "dir": null
+      }
+    }
+  },
+  "saved_time": "2025-10-13T07:26:47"
+}
