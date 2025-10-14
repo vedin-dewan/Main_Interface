@@ -14,11 +14,18 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         # path to device connections file (global device connection defaults)
         base_dir = os.path.dirname(os.path.dirname(__file__))
         self.connections_file = os.path.join(base_dir, 'parameters', 'device_connections.json')
+        # cameras file
+        self.cameras_file = os.path.join(base_dir, 'parameters', 'cameras.json')
         # defaults passed from caller
         self._default_port = default_port
         self._default_baud = default_baud
         self._build_ui()
         self._load_stages()
+        # load cameras after UI built
+        try:
+            self._load_cameras()
+        except Exception:
+            self._cameras = []
 
     # emit when stages.json is changed by the UI (provides the new list of stage dicts)
     stages_changed = QtCore.pyqtSignal(list)
@@ -41,6 +48,34 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self.tabs.addTab(self.tab_pico, "Picomotors")
 
         layout.addWidget(self.tabs)
+
+        # --- build cameras tab layout ---
+        cam_layout = QtWidgets.QVBoxLayout(self.tab_cams)
+        lab = QtWidgets.QLabel("Camera Info Listbox")
+        lab.setStyleSheet("font-weight: bold; margin-bottom: 6px;")
+        cam_layout.addWidget(lab)
+
+        # Table: Name | Purpose | Filters | Serial
+        self.cameras_table = QtWidgets.QTableWidget(0, 4)
+        self.cameras_table.setHorizontalHeaderLabels(['Name', 'Purpose', 'Filters', 'Serial'])
+        self.cameras_table.horizontalHeader().setStretchLastSection(True)
+        self.cameras_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.cameras_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked | QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed)
+        cam_layout.addWidget(self.cameras_table)
+
+        # Add / Remove buttons
+        btn_row = QtWidgets.QHBoxLayout()
+        self.btn_cam_add = QtWidgets.QPushButton('Add')
+        self.btn_cam_remove = QtWidgets.QPushButton('Remove')
+        btn_row.addWidget(self.btn_cam_add)
+        btn_row.addWidget(self.btn_cam_remove)
+        btn_row.addStretch()
+        cam_layout.addLayout(btn_row)
+
+        # connect camera table signals
+        self.cameras_table.cellChanged.connect(self._on_camera_cell_changed)
+        self.btn_cam_add.clicked.connect(self._add_camera)
+        self.btn_cam_remove.clicked.connect(self._remove_selected_camera)
 
         # -- build stages tab layout --
         s_layout = QtWidgets.QHBoxLayout(self.tab_stages)
@@ -180,6 +215,80 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             self.stage_list.addItem(s.get('name',''))
         if data:
             self.stage_list.setCurrentRow(0)
+
+    # ---------------- cameras helpers ----------------
+    def _load_cameras(self):
+        try:
+            with open(self.cameras_file, 'r', encoding='utf-8') as f:
+                cams = json.load(f)
+        except Exception:
+            cams = []
+        if not isinstance(cams, list):
+            cams = []
+        self._cameras = cams
+        # populate table without triggering cellChanged
+        try:
+            self.cameras_table.blockSignals(True)
+            self.cameras_table.setRowCount(0)
+            for c in cams:
+                row = self.cameras_table.rowCount()
+                self.cameras_table.insertRow(row)
+                self.cameras_table.setItem(row, 0, QtWidgets.QTableWidgetItem(str(c.get('Name', ''))))
+                self.cameras_table.setItem(row, 1, QtWidgets.QTableWidgetItem(str(c.get('Purpose', ''))))
+                self.cameras_table.setItem(row, 2, QtWidgets.QTableWidgetItem(str(c.get('Filters', ''))))
+                self.cameras_table.setItem(row, 3, QtWidgets.QTableWidgetItem(str(c.get('Serial', ''))))
+        finally:
+            try: self.cameras_table.blockSignals(False)
+            except Exception: pass
+
+    def _save_cameras(self):
+        try:
+            out = []
+            for r in range(self.cameras_table.rowCount()):
+                try:
+                    name = self.cameras_table.item(r, 0).text() if self.cameras_table.item(r, 0) else ''
+                    purpose = self.cameras_table.item(r, 1).text() if self.cameras_table.item(r, 1) else ''
+                    filters = self.cameras_table.item(r, 2).text() if self.cameras_table.item(r, 2) else ''
+                    serial = self.cameras_table.item(r, 3).text() if self.cameras_table.item(r, 3) else ''
+                    out.append({'Name': name, 'Purpose': purpose, 'Filters': filters, 'Serial': serial})
+                except Exception:
+                    continue
+            with open(self.cameras_file, 'w', encoding='utf-8') as f:
+                json.dump(out, f, indent=2)
+            self._cameras = out
+        except Exception:
+            pass
+
+    def _on_camera_cell_changed(self, row: int, col: int):
+        # save cameras whenever a cell is edited
+        try:
+            self._save_cameras()
+        except Exception:
+            pass
+
+    def _add_camera(self):
+        try:
+            row = self.cameras_table.rowCount()
+            self.cameras_table.insertRow(row)
+            # add empty cells
+            for c in range(4):
+                self.cameras_table.setItem(row, c, QtWidgets.QTableWidgetItem(''))
+            # focus on name cell
+            self.cameras_table.editItem(self.cameras_table.item(row, 0))
+            self._save_cameras()
+        except Exception:
+            pass
+
+    def _remove_selected_camera(self):
+        try:
+            sel = self.cameras_table.selectionModel().selectedRows()
+            # remove from bottom to top to avoid index shift
+            rows = sorted([r.row() for r in sel], reverse=True)
+            for r in rows:
+                self.cameras_table.removeRow(r)
+            self._save_cameras()
+        except Exception:
+            pass
 
     def _save_stages(self):
         """Write the in-memory stages list back to the JSON file (atomic-ish)."""
