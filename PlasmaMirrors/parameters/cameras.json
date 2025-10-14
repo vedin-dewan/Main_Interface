@@ -1,8 +1,14 @@
 [
   {
     "Name": "BKFLY965",
-    "Purpose": "NF, Dir/PM1/PM2",
-    "Filters": "",
+    "Purpose": "PM NF",
+    "Filters": "FSQ400",
     "Serial": "18090965"
+  },
+  {
+    "Name": "BKFLY566",
+    "Purpose": "ThirdHarmonic",
+    "Filters": "Andover265",
+    "Serial": "18091566"
   }
 ]
