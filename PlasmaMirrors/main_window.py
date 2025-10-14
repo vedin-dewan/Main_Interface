@@ -31,7 +31,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Plasma Mirrors GUI")
-        self.resize(920, 720)
+        self.resize(1400, 1300)
 
         motors = [
             MotorInfo("PM1R",  "PM1 Rotation",     0,        0.0,      "deg", 360.0, 0.0, 360.0, 90.0, "deg/s"),
