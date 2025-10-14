@@ -7,20 +7,20 @@ class MotorStatusPanel(QtWidgets.QWidget):
         super().__init__()
         title = QtWidgets.QLabel("Stages")
         title.setStyleSheet("font-size: 16px; font-weight: 700;")
-
+        # keep a reference to the container and layout so we can refresh in-place
         self.rows: list[MotorRow] = [MotorRow(m, i) for i, m in enumerate(motors, start=1)]
 
-        container = QtWidgets.QWidget()
-        v = QtWidgets.QVBoxLayout(container)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(2)
+        self._container = QtWidgets.QWidget()
+        self._rows_layout = QtWidgets.QVBoxLayout(self._container)
+        self._rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._rows_layout.setSpacing(2)
         for r in self.rows:
-            v.addWidget(r)
-        v.addStretch(1)
+            self._rows_layout.addWidget(r)
+        self._rows_layout.addStretch(1)
 
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setWidget(container)
+        scroll.setWidget(self._container)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
 
         topbar = QtWidgets.QHBoxLayout()
@@ -34,6 +34,30 @@ class MotorStatusPanel(QtWidgets.QWidget):
         layout.setSpacing(6)
         layout.addLayout(topbar)
         layout.addWidget(scroll)
+
+    def refresh_motors(self, motors: list[MotorInfo]):
+        """Replace the rows in-place with a new motors list without recreating the widget.
+        This preserves references to the MotorStatusPanel instance held elsewhere in the app.
+        """
+        # remove existing row widgets
+        try:
+            for r in getattr(self, 'rows', []):
+                try:
+                    # remove from layout and schedule deletion
+                    self._rows_layout.removeWidget(r)
+                    r.setParent(None)
+                    r.deleteLater()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # build new rows
+        self.rows = [MotorRow(m, i) for i, m in enumerate(motors, start=1)]
+        try:
+            for r in self.rows:
+                self._rows_layout.insertWidget(self._rows_layout.count() - 1, r)
+        except Exception:
+            pass
 
     # called by MainWindow on readbacks
     def update_address(self, steps: float, pos: float, stage_no: int):
