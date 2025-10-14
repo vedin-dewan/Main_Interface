@@ -52,7 +52,7 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         # --- build cameras tab layout ---
         cam_layout = QtWidgets.QVBoxLayout(self.tab_cams)
         lab = QtWidgets.QLabel("Camera Info Listbox")
-        lab.setStyleSheet("font-weight: bold; margin-bottom: 6px;")
+        lab.setStyleSheet("font-weight: bold; margin-bottom: 6px; color: #0b3b0b;")
         cam_layout.addWidget(lab)
 
         # Table: Name | Purpose | Filters | Serial
@@ -61,6 +61,19 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self.cameras_table.horizontalHeader().setStretchLastSection(True)
         self.cameras_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.cameras_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked | QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed)
+        # Improve readability: alternating row colors, clearer header and selection
+        try:
+            self.cameras_table.setAlternatingRowColors(True)
+            self.cameras_table.setStyleSheet(
+                "QTableWidget { background: #ffffff; color: #0a0a0a; gridline-color: #d0d0d0; }"
+                "QTableWidget::item { padding: 4px; }"
+                "QTableWidget::item:selected { background: #1f5fa8; color: #ffffff; }"
+                "QHeaderView::section { background: #f0f0f0; color: #000000; font-weight: bold; padding: 6px; border: 1px solid #d0d0d0; }"
+            )
+            # make headers stand out
+            self.cameras_table.horizontalHeader().setStyleSheet("QHeaderView::section { padding: 6px; }")
+        except Exception:
+            pass
         cam_layout.addWidget(self.cameras_table)
 
         # Add / Remove buttons
