@@ -21,6 +21,16 @@ class ZaberStageIO(QtCore.QObject):
         self.baud = baud
         self.conn = None
 
+    @QtCore.pyqtSlot(str, int)
+    def set_port_baud(self, port: str, baud: int):
+        """Set serial port and baud rate from the I/O thread (queued)."""
+        try:
+            self.port = port
+            self.baud = int(baud)
+            self.log.emit(f"Port/baud updated in I/O thread: {self.port} @ {self.baud}")
+        except Exception as e:
+            self.error.emit(f"Failed to set port/baud: {e}")
+
     @QtCore.pyqtSlot()
     def open(self):
         try:

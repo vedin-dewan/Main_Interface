@@ -167,6 +167,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage.bounds.connect(self._on_bounds)
         self.io_thread.start()
 
+        # handle connect requests from the DeviceTabsPanel (UI thread)
+        try:
+            self.device_tabs.connectRequested.connect(self._on_device_connect_requested)
+        except Exception:
+            pass
+
         # track pending bypass moves: addr -> pm_index
         self._pending_bypass_moves = {}
 
@@ -339,6 +345,62 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
         except Exception:
             pass
+
+    @QtCore.pyqtSlot(str, int)
+    def _on_device_connect_requested(self, port: str, baud: int):
+        """Handle connect requests from DeviceTabsPanel.
+        This runs in the main/UI thread and will invoke methods on the Stage I/O via queued connections.
+        Sequence:
+          - request the worker to close current conn
+          - update port/baud in worker (queued)
+          - request open (which triggers discover)
+        After discovery, _on_discovered will run; if no devices were found we'll show a MessageBox.
+        """
+        try:
+            self.status_panel.append_line(f"Connecting to {port} @ {baud}...")
+            # ask worker to close current connection (queued)
+            try:
+                QtCore.QMetaObject.invokeMethod(self.stage, 'close', QtCore.Qt.ConnectionType.QueuedConnection)
+            except Exception:
+                pass
+            # set port/baud on the worker thread (queued)
+            try:
+                QtCore.QMetaObject.invokeMethod(self.stage, 'set_port_baud', QtCore.Qt.ConnectionType.QueuedConnection,
+                                                QtCore.Q_ARG(str, port), QtCore.Q_ARG(int, int(baud)))
+            except Exception:
+                # fallback: call attribute directly (best-effort)
+                try:
+                    self.stage.set_port_baud(port, int(baud))
+                except Exception:
+                    pass
+            # request open (which will emit opened -> discover)
+            try:
+                QtCore.QMetaObject.invokeMethod(self.stage, 'open', QtCore.Qt.ConnectionType.QueuedConnection)
+            except Exception:
+                pass
+            # We'll check in _on_discovered whether devices were found. If none, show a dialog.
+            # To ensure the user sees a message if discovery finds nothing, connect a one-shot
+            # slot to the discovered signal that will display a popup when devices empty.
+            def _show_if_empty(devs: list):
+                try:
+                    if not devs:
+                        QtWidgets.QMessageBox.warning(self, 'Connect failed', f'No Zaber stages found on {port} at {baud} baud.')
+                except Exception:
+                    pass
+                try:
+                    self.stage.discovered.disconnect(_show_if_empty)
+                except Exception:
+                    pass
+
+            try:
+                self.stage.discovered.connect(_show_if_empty)
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                self.status_panel.append_line(f"Connect request failed: {e}")
+            except Exception:
+                pass
 
     @QtCore.pyqtSlot(int, bool)
     def _on_moving(self, address: int, is_moving: bool):

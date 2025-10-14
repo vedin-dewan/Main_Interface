@@ -5,7 +5,10 @@ class DeviceTabsPanel(QtWidgets.QWidget):
     """Left-side panel with tabs: Zaber Stages, Cameras, Spectrometers, Picomotors.
     The Zaber Stages tab is populated from parameters/stages.json.
     """
-    def __init__(self, stages_file=None, parent=None):
+    # signal emitted when user requests to connect to a port/baud
+    connectRequested = QtCore.pyqtSignal(str, int)
+
+    def __init__(self, stages_file=None, default_port=None, default_baud: int = 115200, parent=None):
         super().__init__(parent)
         self.stages_file = stages_file or os.path.join(os.path.dirname(__file__), '..', 'parameters', 'stages.json')
         self._build_ui()
@@ -72,6 +75,16 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self.com_combo.addItems(["COM1","COM2","COM3","COM4","/dev/ttyUSB0","/dev/ttyUSB1","/dev/tty.usbserial-0001"])
         form.addRow("COM", self.com_combo)
 
+        # Baud rate selector
+        self.baud_combo = QtWidgets.QComboBox()
+        self.baud_combo.setEditable(True)
+        self.baud_combo.addItems([str(x) for x in (9600, 19200, 38400, 57600, 115200, 230400)])
+        form.addRow("Baud", self.baud_combo)
+
+        # Connect button to trigger connectRequested
+        self.btn_connect = QtWidgets.QPushButton("Connect")
+        form.addRow("", self.btn_connect)
+
         # connect selection change
         self.stage_list.currentRowChanged.connect(self._on_stage_selected)
 
@@ -84,6 +97,10 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         # QPlainTextEdit has no editingFinished, use focusOutEvent based commit via textChanged debounce
         self.desc_edit.textChanged.connect(lambda: self._on_field_changed('description'))
         self.com_combo.editTextChanged.connect(lambda _: self._on_field_changed('com'))
+        self.baud_combo.currentTextChanged.connect(lambda _: self._on_baud_changed())
+        self.btn_connect.clicked.connect(self._on_connect_clicked)
+
+        # (default_port/default_baud are handled in __init__ after _load_stages)
 
     def _load_stages(self):
         try:
@@ -153,7 +170,14 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         # limit: use 'limit' field if present; this field is read-only and will be updated
         # from device-reported bounds via set_limit_for_stage
         limit = s.get('limit', '')
-        self.limit_edit.setText(str(limit))
+        try:
+            if limit == '' or limit is None:
+                txt = ''
+            else:
+                txt = f"{float(limit):.5g}"
+        except Exception:
+            txt = str(limit)
+        self.limit_edit.setText(txt)
         # populate COM if stored previously
         com = s.get('com', '')
         if com:
@@ -204,6 +228,29 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         except Exception:
             pass
 
+    def _on_baud_changed(self):
+        # Store baud choice in currently selected stage record (not the same as connect)
+        idx = self.stage_list.currentRow()
+        if idx < 0 or idx >= len(getattr(self, '_stages', [])):
+            return
+        s = self._stages[idx]
+        try:
+            s['baud'] = int(str(self.baud_combo.currentText()).strip())
+            self._save_stages()
+        except Exception:
+            pass
+
+    def _on_connect_clicked(self):
+        port = str(self.com_combo.currentText() or '').strip()
+        try:
+            baud = int(str(self.baud_combo.currentText()).strip())
+        except Exception:
+            baud = 115200
+        try:
+            self.connectRequested.emit(port, baud)
+        except Exception:
+            pass
+
     def set_limit_for_stage(self, num: int, upper: float):
         """Update the 'limit' (upper bound) for the stage with given num.
         This updates the in-memory dict, the visible read-only field (if selected), and persists to disk.
@@ -216,7 +263,11 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                         s['limit'] = float(upper)
                         # if currently selected, update the visible widget
                         if self.stage_list.currentRow() == i:
-                            self.limit_edit.setText(str(upper))
+                            try:
+                                txt = '' if upper is None else f"{float(upper):.5g}"
+                            except Exception:
+                                txt = str(upper)
+                            self.limit_edit.setText(txt)
                         # persist immediately
                         self._save_stages()
                         break

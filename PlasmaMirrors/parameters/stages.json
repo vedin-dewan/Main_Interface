@@ -6,7 +6,8 @@
     "num": 1,
     "Abr": "PM1R",
     "description": "Plasma Mirror 1 Rotation",
-    "limit": 358.999921875
+    "limit": 358.999921875,
+    "baud": 115200
   },
   {
     "name": "PM1 Y Scan",
