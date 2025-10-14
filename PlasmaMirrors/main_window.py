@@ -15,6 +15,7 @@ from panels.overall_control_panel import SavingPanel
 import os
 import json
 
+# legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -39,6 +40,20 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             base_dir = os.path.dirname(os.path.abspath(__file__))
             stages_file = os.path.join(base_dir, 'parameters', 'stages.json')
+            # load device connections defaults if present
+            con_file = os.path.join(base_dir, 'parameters', 'device_connections.json')
+            detected_port = None
+            detected_baud = None
+            try:
+                with open(con_file, 'r', encoding='utf-8') as cf:
+                    con = json.load(cf)
+                    z = con.get('zaber', {}) if isinstance(con, dict) else {}
+                    detected_port = z.get('PORT') or z.get('port')
+                    detected_baud = z.get('BAUD') or z.get('baud')
+            except Exception:
+                detected_port = None
+                detected_baud = None
+
             with open(stages_file, 'r', encoding='utf-8') as f:
                 stages = sorted(json.load(f), key=lambda s: int(s.get('num', 0)))
             for s in stages:
@@ -59,7 +74,14 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             motors = []
 
-        self.device_tabs = DeviceTabsPanel()
+        # Determine defaults for DeviceTabs and stage IO
+        port_default = detected_port if detected_port is not None else PORT
+        try:
+            baud_default = int(detected_baud) if detected_baud is not None else BAUD
+        except Exception:
+            baud_default = BAUD
+
+        self.device_tabs = DeviceTabsPanel(default_port=port_default, default_baud=baud_default)
         # when the device tabs edit the stages.json, update our motors list
         try:
             self.device_tabs.stages_changed.connect(lambda new_stages: self._on_stages_edited(new_stages))

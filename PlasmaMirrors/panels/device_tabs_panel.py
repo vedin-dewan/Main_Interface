@@ -11,6 +11,12 @@ class DeviceTabsPanel(QtWidgets.QWidget):
     def __init__(self, stages_file=None, default_port=None, default_baud: int = 115200, parent=None):
         super().__init__(parent)
         self.stages_file = stages_file or os.path.join(os.path.dirname(__file__), '..', 'parameters', 'stages.json')
+        # path to device connections file (global device connection defaults)
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        self.connections_file = os.path.join(base_dir, 'parameters', 'device_connections.json')
+        # defaults passed from caller
+        self._default_port = default_port
+        self._default_baud = default_baud
         self._build_ui()
         self._load_stages()
 
@@ -96,11 +102,30 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self.abr_edit.editingFinished.connect(lambda: self._on_field_changed('Abr'))
         # QPlainTextEdit has no editingFinished, use focusOutEvent based commit via textChanged debounce
         self.desc_edit.textChanged.connect(lambda: self._on_field_changed('description'))
-        self.com_combo.editTextChanged.connect(lambda _: self._on_field_changed('com'))
+        self.com_combo.editTextChanged.connect(lambda _: self._on_com_changed())
         self.baud_combo.currentTextChanged.connect(lambda _: self._on_baud_changed())
         self.btn_connect.clicked.connect(self._on_connect_clicked)
 
         # (default_port/default_baud are handled in __init__ after _load_stages)
+
+        # Styling: ensure tab labels and selection highlights are visible on a white background
+        try:
+            # Tab appearance
+            self.tabs.setStyleSheet(
+                "QTabWidget::pane { background: white; border: none; }"
+                "QTabBar::tab { background: white; color: #000000; padding: 6px 10px; margin: 2px; border-radius: 4px; }"
+                "QTabBar::tab:selected { background: #3399ff; color: #ffffff; }"
+                "QTabBar::tab:hover { background: #e6f2ff; }"
+            )
+
+            # Stage list appearance (selected item highlight)
+            self.stage_list.setStyleSheet(
+                "QListWidget { background: white; color: #000000; }"
+                "QListWidget::item:selected { background: #3399ff; color: #ffffff; }"
+                "QListWidget::item:hover { background: #e6f2ff; }"
+            )
+        except Exception:
+            pass
 
     def _load_stages(self):
         try:
@@ -108,6 +133,45 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                 data = json.load(f)
         except Exception:
             data = []
+        # Load device connections defaults and apply to combos if present
+        try:
+            with open(self.connections_file, 'r', encoding='utf-8') as cf:
+                con = json.load(cf)
+                z = con.get('zaber', {}) if isinstance(con, dict) else {}
+                port = z.get('PORT') or z.get('port')
+                baud = z.get('BAUD') or z.get('baud')
+                if port:
+                    if self.com_combo.findText(str(port)) == -1:
+                        self.com_combo.addItem(str(port))
+                    self.com_combo.setCurrentText(str(port))
+                elif getattr(self, '_default_port', None):
+                    if self.com_combo.findText(str(self._default_port)) == -1:
+                        self.com_combo.addItem(str(self._default_port))
+                    self.com_combo.setCurrentText(str(self._default_port))
+                if baud:
+                    if self.baud_combo.findText(str(baud)) == -1:
+                        self.baud_combo.addItem(str(baud))
+                    self.baud_combo.setCurrentText(str(baud))
+                elif getattr(self, '_default_baud', None):
+                    if self.baud_combo.findText(str(self._default_baud)) == -1:
+                        self.baud_combo.addItem(str(self._default_baud))
+                    self.baud_combo.setCurrentText(str(self._default_baud))
+        except Exception:
+            # fallback to passed defaults if available
+            try:
+                if getattr(self, '_default_port', None):
+                    if self.com_combo.findText(str(self._default_port)) == -1:
+                        self.com_combo.addItem(str(self._default_port))
+                    self.com_combo.setCurrentText(str(self._default_port))
+            except Exception:
+                pass
+            try:
+                if getattr(self, '_default_baud', None):
+                    if self.baud_combo.findText(str(self._default_baud)) == -1:
+                        self.baud_combo.addItem(str(self._default_baud))
+                    self.baud_combo.setCurrentText(str(self._default_baud))
+            except Exception:
+                pass
         # sort by 'num'
         data = sorted(data, key=lambda s: s.get('num', 0))
         self._stages = data
@@ -139,6 +203,28 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             # write with indent for readability
             with open(self.stages_file, 'w', encoding='utf-8') as f:
                 json.dump(out, f, indent=2)
+            # Also update device_connections.json zaber entry with current COM/BAUD
+            try:
+                try:
+                    with open(self.connections_file, 'r', encoding='utf-8') as cf:
+                        con = json.load(cf)
+                except Exception:
+                    con = {}
+                if not isinstance(con, dict):
+                    con = {}
+                port = str(self.com_combo.currentText() or '')
+                baud_txt = str(self.baud_combo.currentText() or '')
+                try:
+                    baud_val = int(baud_txt)
+                except Exception:
+                    baud_val = baud_txt
+                con['zaber'] = con.get('zaber', {})
+                con['zaber']['PORT'] = port
+                con['zaber']['BAUD'] = baud_val
+                with open(self.connections_file, 'w', encoding='utf-8') as cf:
+                    json.dump(con, cf, indent=2)
+            except Exception:
+                pass
             # notify listeners (MainWindow) that stages changed
             try:
                 self.stages_changed.emit(self._stages)
@@ -237,6 +323,26 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         try:
             s['baud'] = int(str(self.baud_combo.currentText()).strip())
             self._save_stages()
+        except Exception:
+            pass
+
+    def _on_com_changed(self):
+        """Handle edits to the COM combo: update the selected stage's 'com' field and persist.
+        Also triggers writing the `device_connections.json` via _save_stages().
+        """
+        try:
+            idx = self.stage_list.currentRow()
+            if 0 <= idx < len(getattr(self, '_stages', [])):
+                s = self._stages[idx]
+                try:
+                    s['com'] = str(self.com_combo.currentText()).strip()
+                except Exception:
+                    pass
+            # persist stages and device_connections.json
+            try:
+                self._save_stages()
+            except Exception:
+                pass
         except Exception:
             pass
 

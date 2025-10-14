@@ -6,8 +6,7 @@
     "num": 1,
     "Abr": "PM1R",
     "description": "Plasma Mirror 1 Rotation",
-    "limit": 358.999921875,
-    "baud": 115200
+    "limit": 358.999921875
   },
   {
     "name": "PM1 Y Scan",
@@ -61,9 +60,7 @@
     "num": 7,
     "Abr": "R2",
     "description": "Rotation of the thin Silica Wafer for two-color experiments. ",
-    "limit": 0.10007812499999999,
-    "com": "COM8",
-    "baud": 115200
+    "limit": 0.10007812499999999
   },
   {
     "name": "XUV Mirror",
