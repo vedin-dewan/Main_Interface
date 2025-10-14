@@ -16,6 +16,8 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self.connections_file = os.path.join(base_dir, 'parameters', 'device_connections.json')
         # cameras file
         self.cameras_file = os.path.join(base_dir, 'parameters', 'cameras.json')
+        # spectrometers file
+        self.spectrometers_file = os.path.join(base_dir, 'parameters', 'spectrometers.json')
         # defaults passed from caller
         self._default_port = default_port
         self._default_baud = default_baud
@@ -26,6 +28,11 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             self._load_cameras()
         except Exception:
             self._cameras = []
+        # load spectrometers after UI built
+        try:
+            self._load_spectrometers()
+        except Exception:
+            self._spectrometers = []
 
     # emit when stages.json is changed by the UI (provides the new list of stage dicts)
     stages_changed = QtCore.pyqtSignal(list)
@@ -89,6 +96,19 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self.cameras_table.cellChanged.connect(self._on_camera_cell_changed)
         self.btn_cam_add.clicked.connect(self._add_camera)
         self.btn_cam_remove.clicked.connect(self._remove_selected_camera)
+
+        # --- build spectrometers tab layout ---
+        spec_layout = QtWidgets.QFormLayout(self.tab_specs)
+        # Visible spectrometer filename
+        self.spec_vis_edit = QtWidgets.QLineEdit()
+        spec_layout.addRow("Visible spectrometer filename", self.spec_vis_edit)
+        # XUV spectrometer filename
+        self.spec_xuv_edit = QtWidgets.QLineEdit()
+        spec_layout.addRow("XUV spectrometer filename", self.spec_xuv_edit)
+
+        # connect edits to save handlers
+        self.spec_vis_edit.editingFinished.connect(self._on_spec_changed)
+        self.spec_xuv_edit.editingFinished.connect(self._on_spec_changed)
 
         # -- build stages tab layout --
         s_layout = QtWidgets.QHBoxLayout(self.tab_stages)
@@ -269,6 +289,56 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             with open(self.cameras_file, 'w', encoding='utf-8') as f:
                 json.dump(out, f, indent=2)
             self._cameras = out
+        except Exception:
+            pass
+
+    # ---------------- spectrometers helpers ----------------
+    def _load_spectrometers(self):
+        try:
+            with open(self.spectrometers_file, 'r', encoding='utf-8') as f:
+                specs = json.load(f)
+        except Exception:
+            specs = []
+        if not isinstance(specs, list):
+            specs = []
+        # Expect two entries: Visible and XUV (by convention); fallback to blanks
+        self._spectrometers = specs
+        vis = ''
+        xuv = ''
+        try:
+            if len(specs) > 0:
+                vis = str(specs[0].get('filename', ''))
+            if len(specs) > 1:
+                xuv = str(specs[1].get('filename', ''))
+        except Exception:
+            pass
+        try:
+            self.spec_vis_edit.blockSignals(True)
+            self.spec_xuv_edit.blockSignals(True)
+            self.spec_vis_edit.setText(vis)
+            self.spec_xuv_edit.setText(xuv)
+        finally:
+            try: self.spec_vis_edit.blockSignals(False)
+            except Exception: pass
+            try: self.spec_xuv_edit.blockSignals(False)
+            except Exception: pass
+
+    def _save_spectrometers(self):
+        try:
+            vis = self.spec_vis_edit.text() if self.spec_vis_edit else ''
+            xuv = self.spec_xuv_edit.text() if self.spec_xuv_edit else ''
+            out = []
+            out.append({'name': 'Visible', 'filename': vis})
+            out.append({'name': 'XUV', 'filename': xuv})
+            with open(self.spectrometers_file, 'w', encoding='utf-8') as f:
+                json.dump(out, f, indent=2)
+            self._spectrometers = out
+        except Exception:
+            pass
+
+    def _on_spec_changed(self):
+        try:
+            self._save_spectrometers()
         except Exception:
             pass
 
