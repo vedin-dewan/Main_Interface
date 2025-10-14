@@ -10,6 +10,7 @@ from panels.PM_panel import PMPanel
 from panels.fire_controls_panel import FireControlsPanel
 from device_io.kinesis_fire_io import KinesisFireIO, FireConfig
 from panels.placeholder_panel import PlaceholderPanel
+from panels.device_tabs_panel import DeviceTabsPanel
 from panels.overall_control_panel import SavingPanel
 import os
 import json
@@ -33,31 +34,44 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Plasma Mirrors GUI")
         self.resize(920, 720)
 
-        motors = [
-            MotorInfo("PM1R",  "PM1 Rotation",     0,        0.0,      "deg", 360.0, 0.0, 360.0, 90.0, "deg/s"),
-            MotorInfo("PM1Y",  "PM1 Y Scan",       4_266_667, 203.2,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM1Z",  "PM1 Z Scan",       1_066_667, 50.8,    "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM1D",  "PM1 Redirect",     2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM3Y",  "PM3 Y Scan",       3_038_763, 301.502, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM3Z",  "PM3 Z Scan",         771_029, 76.5005, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("R2",    "Rotation 2",       0,        0.0,      "deg", 360.0, 0.0, 360.0, 90.0, "deg/s"),
-            MotorInfo("XM",    "XUV Mirror",       3_200_000, 152.4,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("S2",    "Beam Diag.",       3_200_000, 152.4,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM2D",  "PM2 Redirect",     2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM2Y",  "PM2 Y Scan",       1_526_940, 151.501, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM2Z",  "PM2 Z Scan",         771_029, 76.5005, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM2X",  "PM2 Vertical",     2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PM3X",  "PM3 Vertical",     2_133_334, 76.5005, "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("S3",    "HeNe",             2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-            MotorInfo("PG",    "Plasma",           2_133_334, 101.6,   "mm", 304.8, 0.0, 304.8, 50.0, "mm/s"),
-        ]
+        # Load stage definitions from parameters/stages.json and convert to MotorInfo list
+        motors = []
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            stages_file = os.path.join(base_dir, 'parameters', 'stages.json')
+            with open(stages_file, 'r', encoding='utf-8') as f:
+                stages = sorted(json.load(f), key=lambda s: int(s.get('num', 0)))
+            for s in stages:
+                short = s.get('Abr', '')
+                long = s.get('name', '')
+                num = int(s.get('num', 0))
+                # approximate steps and engineering value are left as 0 unless you want a mapping
+                steps = 0
+                eng_value = 0.0
+                typ = s.get('type', 'Linear')
+                unit = 'mm' if typ == 'Linear' else 'deg'
+                span = float(s.get('limit', 0.0) or 0.0)
+                lbound = 0.0
+                ubound = float(s.get('limit', 0.0) or 0.0)
+                speed = 50.0 if unit == 'mm' else 90.0
+                speed_unit = 'mm/s' if unit == 'mm' else 'deg/s'
+                motors.append(MotorInfo(short, long, steps, eng_value, unit, span, lbound, ubound, speed, speed_unit))
+        except Exception:
+            motors = []
 
+        self.device_tabs = DeviceTabsPanel()
+        # when the device tabs edit the stages.json, update our motors list
+        try:
+            self.device_tabs.stages_changed.connect(lambda new_stages: self._on_stages_edited(new_stages))
+        except Exception:
+            pass
         self.overall_controls = SavingPanel()
         self.fire_panel    = FireControlsPanel()
         self.pm_panel= PMPanel()
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
         self.status_panel = StatusPanel()
+        self.placeholder_panel = PlaceholderPanel("Placeholder")
         
         # --- Center layout: 2x3 grid ---------------------------------
         central = QtWidgets.QWidget()
@@ -66,20 +80,37 @@ class MainWindow(QtWidgets.QMainWindow):
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
 
-        # Top row: Overall Controls | Fire Controls | PM panel
-        grid.addWidget(self.overall_controls, 0, 0)
-        grid.addWidget(self.fire_panel, 0, 1)
-        grid.addWidget(self.pm_panel, 0, 2)
+        # Layout (4 columns left -> right):
+        # col0 (leftmost): placeholder_panel (top) / device_tabs (bottom)
+        # col1: overall_controls (top) / status_panel (bottom)
+        # col2: fire_panel (top) / part2 (stage_control_panel) (bottom)
+        # col3 (rightmost): pm_panel (top) / part1 (motor_status_panel) (bottom)
 
-        # Bottom row: Status | Stages (part1) | Stage Controls (part2)
-        grid.addWidget(self.status_panel, 0 + 1, 0)   # row 1, col 0
-        grid.addWidget(self.part2,        1, 1)       # Stage controls
-        grid.addWidget(self.part1,        1, 2)       # Motor_status
+        # Top row (row 0)
+        grid.addWidget(self.placeholder_panel, 0, 0)
+        grid.addWidget(self.overall_controls, 0, 1)
+        grid.addWidget(self.fire_panel, 0, 2)
+        grid.addWidget(self.pm_panel, 0, 3)
 
-        # Make Stages (col 1) the widest
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 2)   # Part 1 wider
-        grid.setColumnStretch(2, 3)
+    # Bottom row (row 1)
+    # allow device_tabs to expand so its tab contents are visible
+        grid.addWidget(self.device_tabs, 1, 0)
+        grid.addWidget(self.status_panel, 1, 1)
+        grid.addWidget(self.part2, 1, 2)
+        grid.addWidget(self.part1, 1, 3)
+
+        # Column stretch (left -> right): give the rightmost column (motor_status) most space
+        # Give the left column a bit more room so the tabs and their contents are visible
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 2)
+        grid.setColumnStretch(3, 3)
+
+        # ensure the DeviceTabsPanel is wide enough to show its internal list/form
+        try:
+            self.device_tabs.setMinimumWidth(260)
+        except Exception:
+            pass
 
         # Even row heights (tweak if you want the bottom row taller)
         grid.setRowStretch(0, 1)
@@ -251,6 +282,63 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int, float, float)
     def _on_bounds(self, address: int, lower: float, upper: float):
         self.part1.update_bounds(lower, upper, address)
+        # update stages.json Limit for this address (if present)
+        try:
+            # find stage by num and update its limit via device_tabs helper
+            self.device_tabs.set_limit_for_stage(address, upper)
+        except Exception:
+            pass
+
+    def _on_stages_edited(self, new_stages: list):
+        """Rebuild MotorStatusPanel rows when stages.json changes from the device tabs panel.
+        This is a light-weight refresh: rebuild the motors list and replace part1 contents.
+        """
+        try:
+            motors = []
+            for s in sorted(new_stages, key=lambda x: int(x.get('num', 0))):
+                short = s.get('Abr', '')
+                long = s.get('name', '')
+                num = int(s.get('num', 0))
+                steps = 0
+                eng_value = 0.0
+                typ = s.get('type', 'Linear')
+                unit = 'mm' if typ == 'Linear' else 'deg'
+                span = float(s.get('limit', 0.0) or 0.0)
+                lbound = 0.0
+                ubound = float(s.get('limit', 0.0) or 0.0)
+                speed = 50.0 if unit == 'mm' else 90.0
+                speed_unit = 'mm/s' if unit == 'mm' else 'deg/s'
+                motors.append(MotorInfo(short, long, steps, eng_value, unit, span, lbound, ubound, speed, speed_unit))
+            # Refresh part1 in-place to avoid changing layout positions.
+            try:
+                # MotorStatusPanel provides refresh_motors to update rows in-place
+                try:
+                    self.part1.refresh_motors(motors)
+                except Exception:
+                    # fallback: recreate if refresh not available
+                    old = self.part1
+                    self.part1 = MotorStatusPanel(motors)
+                    old.hide()
+                # Update stage_control_panel rows and selector
+                try:
+                    if hasattr(self, 'part2') and hasattr(self.part2, 'refresh_rows'):
+                        self.part2.refresh_rows(self.part1.rows)
+                except Exception:
+                    pass
+                # Rebind stop button handlers (remove old connections first)
+                try:
+                    for addr, row in enumerate(self.part1.rows, start=1):
+                        try:
+                            row.light_red.clicked.disconnect()
+                        except Exception:
+                            pass
+                        row.light_red.clicked.connect(lambda checked=False, a=addr, u=row.info.unit: self.req_stop.emit(a, u))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(int, bool)
     def _on_moving(self, address: int, is_moving: bool):

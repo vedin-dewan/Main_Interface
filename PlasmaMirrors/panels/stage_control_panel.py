@@ -124,21 +124,6 @@ class StageControlPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addWidget(grp)
-        layout.addStretch(1)
-
-        # Styling to echo your example
-        grp.setStyleSheet("QGroupBox { font-weight: 600; margin-top: 14px; } QGroupBox::title { subcontrol-origin: margin; left: 8px; }")
-        # keep this section compact in the horizontal layout
-        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Expanding)
-        self.setMaximumWidth(380)
-        self.btn_home.setStyleSheet("background:#5e8f6d; border:1px solid #486d53; padding:4px 10px; border-radius:6px;")
-        for b in (self.btn_absolute, self.btn_back, self.btn_fwd):
-            b.setStyleSheet("background:#2c2c2c; border:1px solid #3a3a3a; padding:4px 10px; border-radius:6px;")
-        for sp in (self.abs_value, self.jog_value):
-            sp.setFixedWidth(100)
-
-        # Initialize with first row
-        self._on_selection_changed(0)
 
         # --- Move to Saved (GUI only) ---------------------------------
         self.saved_grp = QtWidgets.QGroupBox("")
@@ -147,18 +132,6 @@ class StageControlPanel(QtWidgets.QWidget):
         topbar = QtWidgets.QHBoxLayout()
 
         self.saved_preset = QtWidgets.QComboBox()
-        # self.saved_preset.addItems([
-        #     "HOME ALL",
-        #     "Last Position",
-        #     "Zero PM 1",
-        #     "Zero PM 2",
-        #     "Zero PM 3",
-        #     "Microscope PM 1",
-        #     "Microscope PM 2",
-        #     "Microscope PM 3",
-        #     "Home PM 3",
-        #     "<Other> ..."
-        # ])
         self.saved_preset.currentIndexChanged.connect(self._on_preset_changed)
         self.saved_preset.setFixedWidth(220)
         topbar.addWidget(self.saved_preset)
@@ -177,11 +150,11 @@ class StageControlPanel(QtWidgets.QWidget):
 
         # Table: Num | Name | Position | Order
         self.saved_table = QtWidgets.QTableWidget(0, 4)
-        self.saved_table.verticalHeader().setDefaultSectionSize(20)     # try 18–22 px
-        self.saved_table.setWordWrap(False)                             # avoid taller wrapped cells
+        self.saved_table.verticalHeader().setDefaultSectionSize(20)
+        self.saved_table.setWordWrap(False)
         self.saved_table.setStyleSheet(
             "QTableWidget { background-color: #d3d3d3; color: #000; }"
-            "QTableWidget::item { padding: 2px 4px; }"                   # trim internal padding
+            "QTableWidget::item { padding: 2px 4px; }"
         )
         self.saved_table.setHorizontalHeaderLabels(["Num", "Name", "Position", "Order"])
         self.saved_table.horizontalHeader().setStyleSheet("QHeaderView::section { color: #000000; }")
@@ -218,12 +191,6 @@ class StageControlPanel(QtWidgets.QWidget):
         row2.addWidget(self.btn_scan_stage)
         row2.addWidget(self.btn_stop_all)
 
-        # Simple styling to match your look
-        self.btn_home_all.setStyleSheet("background:#5e8f6d; border:1px solid #486d53; padding:4px 10px; border-radius:6px;")
-        self.btn_stop_all.setStyleSheet("background:#a73333; color:#ffd400; font-weight:700; border:1px solid #7a2222; padding:4px 10px; border-radius:6px;")
-        for b in (self.btn_configure, self.btn_save_current, self.btn_move_to_saved, self.btn_scan_stage):
-            b.setStyleSheet("background:#2c2c2c; border:1px solid #3a3a3a; padding:4px 10px; border-radius:6px;")
-
         # Pack group
         sv = QtWidgets.QVBoxLayout()
         sv.setContentsMargins(8, 8, 8, 8)
@@ -236,9 +203,49 @@ class StageControlPanel(QtWidgets.QWidget):
         self.saved_grp.setLayout(sv)
 
         layout.addWidget(self.saved_grp)
-
-        #Load in the saved positions
+        # Load saved positions
         self.load_saved_positions()
+        # keep trailing stretch at the bottom so saved_grp sits above it
+        layout.addStretch(1)
+
+        # Styling to echo your example
+        grp.setStyleSheet("QGroupBox { font-weight: 600; margin-top: 14px; } QGroupBox::title { subcontrol-origin: margin; left: 8px; }")
+        # keep this section compact in the horizontal layout
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.setMaximumWidth(380)
+        self.btn_home.setStyleSheet("background:#5e8f6d; border:1px solid #486d53; padding:4px 10px; border-radius:6px;")
+        for b in (self.btn_absolute, self.btn_back, self.btn_fwd):
+            b.setStyleSheet("background:#2c2c2c; border:1px solid #3a3a3a; padding:4px 10px; border-radius:6px;")
+        for sp in (self.abs_value, self.jog_value):
+            sp.setFixedWidth(100)
+
+        # Initialize with first row
+        self._on_selection_changed(0)
+
+    def refresh_rows(self, rows: list[MotorRow]):
+        """Refresh internal rows reference and update selector entries and unit labels.
+        Called when the MotorStatusPanel rows are rebuilt or reordered.
+        """
+        self.rows = rows
+        # repopulate selector
+        try:
+            self.selector.blockSignals(True)
+            self.selector.clear()
+            for i, r in enumerate(self.rows, start=1):
+                self.selector.addItem(r.info.long, userData=i-1)
+            self.selector.blockSignals(False)
+        except Exception:
+            pass
+        # update unit labels based on first row if available
+        try:
+            if self.rows:
+                self.abs_unit.setText(self.rows[0].info.unit)
+                self.jog_unit.setText(self.rows[0].info.unit)
+                self.bound_unit.setText(self.rows[0].info.unit)
+                self.bound_unit_2.setText(self.rows[0].info.unit)
+                self.speed_unit.setText(self.rows[0].info.speed_unit)
+        except Exception:
+            pass
         
     def _on_selection_changed(self, _idx: int):
         self.current_index = self.selector.currentData() if self.selector.currentData() is not None else 0

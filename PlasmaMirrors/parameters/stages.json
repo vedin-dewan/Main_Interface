@@ -1,0 +1,146 @@
+[
+  {
+    "name": "PM1 Rotation",
+    "model_number": "T-LSM-200A",
+    "type": "Rotation",
+    "num": 1,
+    "Abr": "PM1R",
+    "description": "Plasma Mirror 1 Rotation",
+    "limit": 360.0
+  },
+  {
+    "name": "PM1 Redirect",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 4,
+    "Abr": "PM1D",
+    "description": "PM1 Redirect",
+    "limit": 304.8
+  },
+  {
+    "name": "PM1 Y Scan",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 5,
+    "Abr": "PM1Y",
+    "description": "Plasma Mirror 1 Transverse",
+    "limit": 200.0
+  },
+  {
+    "name": "PM1 Z Scan",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 5,
+    "Abr": "PM1Z",
+    "description": "Plasma Mirror 1 Longitudinal",
+    "limit": 304.8
+  },
+  {
+    "name": "PM3 Y Scan",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 5,
+    "Abr": "PM3Y",
+    "description": "PM3 Y Scan",
+    "limit": 304.8
+  },
+  {
+    "name": "PM3 Z Scan",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 6,
+    "Abr": "PM3Z",
+    "description": "PM3 Z Scan",
+    "limit": 304.8
+  },
+  {
+    "name": "Rotation 2",
+    "model_number": "T-LSM-200A",
+    "type": "Rotation",
+    "num": 7,
+    "Abr": "R2",
+    "description": "Rotation 2",
+    "limit": 360.0
+  },
+  {
+    "name": "XUV Mirror",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 8,
+    "Abr": "XM",
+    "description": "XUV Mirror",
+    "limit": 304.8
+  },
+  {
+    "name": "Beam Diag.",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 9,
+    "Abr": "S2",
+    "description": "Beam Diagnostics",
+    "limit": 304.8
+  },
+  {
+    "name": "PM2 Redirect",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 10,
+    "Abr": "PM2D",
+    "description": "PM2 Redirect",
+    "limit": 304.8
+  },
+  {
+    "name": "PM2 Y Scan",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 11,
+    "Abr": "PM2Y",
+    "description": "PM2 Y Scan",
+    "limit": 304.8
+  },
+  {
+    "name": "PM2 Z Scan",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 12,
+    "Abr": "PM2Z",
+    "description": "PM2 Z Scan",
+    "limit": 304.8
+  },
+  {
+    "name": "PM2 Vertical",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 13,
+    "Abr": "PM2X",
+    "description": "PM2 Vertical",
+    "limit": 304.8
+  },
+  {
+    "name": "PM3 Vertical",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 14,
+    "Abr": "PM3X",
+    "description": "PM3 Vertical",
+    "limit": 304.8
+  },
+  {
+    "name": "HeNe",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 15,
+    "Abr": "S3",
+    "description": "HeNe",
+    "limit": 304.8
+  },
+  {
+    "name": "Plasma",
+    "model_number": "T-LSM-200A",
+    "type": "Linear",
+    "num": 16,
+    "Abr": "PG",
+    "description": "Plasma",
+    "limit": 304.8
+  }
+]
