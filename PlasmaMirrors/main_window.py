@@ -16,7 +16,19 @@ import os
 import json
 import time
 from datetime import datetime
-from . import file_renamer
+try:
+    # Prefer package-style relative import when available
+    from . import file_renamer
+except Exception:
+    # Fallback for script execution (no package context)
+    try:
+        import file_renamer
+    except Exception:
+        # Last-resort: attempt module under PlasmaMirrors
+        try:
+            from PlasmaMirrors import file_renamer
+        except Exception:
+            file_renamer = None
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
