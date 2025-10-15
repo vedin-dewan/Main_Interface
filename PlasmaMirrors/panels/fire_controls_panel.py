@@ -35,7 +35,7 @@ class FireControlsPanel(QtWidgets.QWidget):
         lab_shots = QtWidgets.QLabel("# Shots:")
         self.spin_shots = QtWidgets.QSpinBox()
         self.spin_shots.setRange(1, 9999)
-        self.spin_shots.setValue(10)
+        self.spin_shots.setValue(1) # default 1 shot
         self.spin_shots.setFixedWidth(100)
         self.spin_shots.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
