@@ -56,7 +56,7 @@ def rename_shot_files(
     toks = [str(t).strip() for t in tokens if t]
     toks_l = [t.lower() for t in toks]
 
-    shotnum = int(shotnum or 1)
+    shotnum = int(shotnum or 0)
     exp = str(experiment or 'Experiment')
 
     max_wait_ms = int(timeout_ms or 5000)

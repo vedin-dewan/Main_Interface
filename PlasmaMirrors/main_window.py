@@ -533,7 +533,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 # set the current shot number used for naming (per-shot)
                 try:
-                    self._rename_shotnum = int(getattr(self, '_per_shot_current', 0)) + 1
+                    self._rename_shotnum = int(getattr(self, '_per_shot_current', 0))
                 except Exception:
                     pass
                 self._rename_output_files()
