@@ -640,183 +640,42 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 renamed_map = {}
 
-            # Compose ShotInfo file following the requested format
+            # Delegate Info + SHOT_LOG composition and write to the InfoWriter (background) so the UI
+            # thread remains thin. Prepare a compact payload containing only serializable fields.
             try:
-                # determine timestamp part from first renamed file if present
-                date_s = None
-                time_s = None
-                if renamed:
-                    # parse pattern: <exp>_Shot{shotnum:05d}_{YYYYMMDD}_{HHMMSSmmm}_{label}_0.ext
-                    first_new = os.path.basename(renamed[0][1])
-                    parts = first_new.split('_')
-                    # find the part after Shotxxxxx
-                    shot_index = next((i for i, p in enumerate(parts) if p.startswith('Shot')), None)
-                    if shot_index is not None and len(parts) > shot_index + 2:
-                        date_s = parts[shot_index + 1]
-                        time_s = parts[shot_index + 2]
-                if date_s is None or time_s is None:
-                    if event_ts is not None:
-                        ets = datetime.fromtimestamp(float(event_ts))
-                        ts = ets
-                    else:
-                        ts = datetime.now()
-                    date_s = ts.strftime('%Y%m%d')
-                    ms = int(ts.microsecond / 1000)
-                    time_s = ts.strftime('%H%M%S') + f"{ms:03d}"
+                payload = {
+                    'outdir': outdir,
+                    'experiment': exp,
+                    'shotnum': int(shotnum),
+                    'renamed': renamed,
+                    'part_rows': [(getattr(r.info, 'short', ''), float(getattr(r.info, 'eng_value', 0.0) or 0.0)) for r in getattr(self.part1, 'rows', [])],
+                    'cameras': getattr(self.device_tabs, '_cameras', []) or [],
+                    'spectrometers': getattr(self.device_tabs, '_spectrometers', []) or [],
+                    'event_ts': event_ts,
+                }
 
-                # human-readable date and time
-                try:
-                    hr_date = f"{int(date_s[4:6])}/{int(date_s[6:8])}/{int(date_s[0:4])}"
-                except Exception:
-                    hr_date = datetime.now().strftime('%m/%d/%Y')
-                try:
-                    hh = int(time_s[0:2])
-                    mm = int(time_s[2:4])
-                    ss = int(time_s[4:6])
-                    ampm = 'AM'
-                    display_h = hh
-                    if hh == 0:
-                        display_h = 12
-                        ampm = 'AM'
-                    elif hh == 12:
-                        display_h = 12
-                        ampm = 'PM'
-                    elif hh > 12:
-                        display_h = hh - 12
-                        ampm = 'PM'
-                    time_display = f"{display_h}:{mm:02d}:{ss:02d} {ampm}"
-                except Exception:
-                    time_display = datetime.now().strftime('%I:%M:%S %p')
-
-                info_lines = []
-                # first line
-                info_lines.append("ShotInfoWriter: VERSION_2.0.0")
-                # second line: Shot <n> <mm/dd/yyyy> <hh:mm:ss AM/PM> then Abr-value pairs
-                second = ["Shot", str(shotnum), hr_date, time_display]
-                try:
-                    for r in getattr(self.part1, 'rows', []):
-                        abr = getattr(r.info, 'short', '')
-                        val = float(getattr(r.info, 'eng_value', 0.0) or 0.0)
-                        second.append(f"{abr}-{val:.3f}")
-                except Exception:
-                    pass
-                info_lines.append('\t'.join(second))
-
-                # third line: just numeric positions in order
-                third_vals = []
-                try:
-                    for r in getattr(self.part1, 'rows', []):
-                        val = float(getattr(r.info, 'eng_value', 0.0) or 0.0)
-                        third_vals.append(f"{val:.3f}")
-                except Exception:
-                    pass
-                info_lines.append('\t'.join(third_vals))
-
-                # camera lines: include only cameras with renamed files
-                try:
-                    cams_list = getattr(self.device_tabs, '_cameras', [])
-                    cam_by_name = {str(c.get('Name','')).strip(): c for c in cams_list if c.get('Name')}
-                    for name, newfull in sorted(((n, p) for n, p in renamed_map.items() if n in cam_by_name), key=lambda x: x[0]):
-                        c = cam_by_name.get(name, {})
-                        purpose = str(c.get('Purpose','')).strip()
-                        filters = str(c.get('Filters','')).strip()
-                        # format: Name $ Purpose $ Filters $ 		 fullpath
-                        info_lines.append(f"{name} $\t{purpose} $\t{filters} $\t\t{newfull}")
-                except Exception:
-                    pass
-
-                # spectrometer lines: include only spectrometers with renamed files
-                try:
-                    specs_list = getattr(self.device_tabs, '_spectrometers', [])
-                    # map filename token -> spectrometer entry
-                    spec_by_token = {str(s.get('filename','')).strip(): s for s in specs_list if s.get('filename')}
-                    for token, newfull in sorted(((t, p) for t, p in renamed_map.items() if t in spec_by_token), key=lambda x: x[0]):
-                        s = spec_by_token.get(token, {})
-                        name = str(s.get('name','')).strip()
-                        label = f"{name}Spec" if name else f"{token}Spec"
-                        info_lines.append(f"{token} $\t{label} $\t\t{newfull}")
-                except Exception:
-                    pass
-
-                # prepare payload and send to background InfoWriter
-                try:
-                    info_name = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_Info.txt"
-                    payload = {
-                        'outdir': outdir,
-                        'info_name': info_name,
-                        'info_lines': info_lines,
-                    }
-                    if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info', None) is not None:
-                        try:
-                            self.info_write_request.emit(payload)
-                        except Exception:
-                            # fallback: call directly (best-effort)
-                            try:
-                                self._info_writer.write_info(payload)
-                            except Exception as e:
-                                try:
-                                    self.status_panel.append_line(f"Failed to schedule info write: {e}")
-                                except Exception:
-                                    pass
-                    else:
-                        # no background writer available — write synchronously as fallback
-                        try:
-                            info_full = os.path.join(outdir, info_name)
-                            with open(info_full, 'w', encoding='utf-8') as fh:
-                                for ln in info_lines:
-                                    fh.write(ln + '\n')
-                            try:
-                                self.status_panel.append_line(f"Wrote shot info file: {info_name}")
-                            except Exception:
-                                pass
-                        except Exception as e:
-                            try:
-                                self.status_panel.append_line(f"Failed to write shot info: {e}")
-                            except Exception:
-                                pass
-                except Exception as e:
+                if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info_and_shot_log', None) is not None:
                     try:
-                        self.status_panel.append_line(f"Failed to prepare/send shot info: {e}")
+                        QtCore.QMetaObject.invokeMethod(self._info_writer, 'write_info_and_shot_log', QtCore.Qt.ConnectionType.QueuedConnection,
+                                                        QtCore.Q_ARG(dict, payload))
                     except Exception:
-                        pass
-
-                # Append one-line SHOT_LOG using the background InfoWriter so writes are serialized
-                try:
-                    if outdir:
-                        shot_payload = {
-                            'outdir': outdir,
-                            'info_name': info_name,
-                            'second_line': '\t'.join(second),
-                        }
-                        # preferred: invoke append_shot_log on the InfoWriter thread via queued signal
-                        if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'append_shot_log', None) is not None:
-                            try:
-                                # use QMetaObject to queue the slot on the writer object
-                                QtCore.QMetaObject.invokeMethod(self._info_writer, 'append_shot_log', QtCore.Qt.ConnectionType.QueuedConnection,
-                                                                QtCore.Q_ARG(dict, shot_payload))
-                            except Exception:
-                                # best-effort direct call as fallback
-                                try:
-                                    self._info_writer.append_shot_log(shot_payload)
-                                except Exception as e:
-                                    try: self.status_panel.append_line(f"Failed to schedule SHOT_LOG append: {e}")
-                                    except Exception: pass
-                        else:
-                            # no background writer available — append synchronously
-                            try:
-                                shot_log_path = os.path.join(outdir, 'SHOT_LOG.txt')
-                                shot_log_line = shot_payload['second_line'] + '\t' + os.path.join(outdir, info_name)
-                                with open(shot_log_path, 'a', encoding='utf-8') as shf:
-                                    shf.write(shot_log_line + '\n')
-                                try: self.status_panel.append_line(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
-                                except Exception: pass
-                            except Exception as e:
-                                try: self.status_panel.append_line(f"Failed to update SHOT_LOG: {e}")
-                                except Exception: pass
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                        # fallback: direct call (best-effort)
+                        try:
+                            self._info_writer.write_info_and_shot_log(payload)
+                        except Exception as e:
+                            try: self.status_panel.append_line(f"Failed to schedule info write: {e}")
+                            except Exception: pass
+                else:
+                    # No background writer available — run synchronously via a local InfoWriter instance
+                    try:
+                        tmp = InfoWriter()
+                        tmp.write_info_and_shot_log(payload)
+                    except Exception as e:
+                        try: self.status_panel.append_line(f"Failed to write shot info (fallback): {e}")
+                        except Exception: pass
+            except Exception as e:
+                try: self.status_panel.append_line(f"Failed to dispatch shot info: {e}")
+                except Exception: pass
         except Exception as e:
             try: self.status_panel.append_line(f"Rename exception: {e}")
             except Exception: pass
