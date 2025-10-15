@@ -291,6 +291,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._per_shot_active = False
         self._per_shot_total = 0
         self._per_shot_current = 0
+        # When arming a per-shot sequence the worker may emit shots_progress(0,N).
+        # Suppress that immediate zero-reset so the displayed counter isn't cleared when the user fires.
+        self._suppress_next_zero_progress = False
 
         # style
         self.setStyleSheet(
@@ -445,13 +448,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 # init per-shot counters and queue first shot
                 self._per_shot_active = True
                 self._per_shot_total = max(1, int(shots))
-                self._per_shot_current = 0
+                # preserve the displayed counter value rather than resetting to zero
+                try:
+                    self._per_shot_current = int(self.fire_panel.disp_counter.value())
+                except Exception:
+                    self._per_shot_current = 0
+                # the worker will likely emit shots_progress(0, N) when arming; suppress responding to that once
+                self._suppress_next_zero_progress = True
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
                 except Exception:
                     try: self.status_panel.append_line('Failed to queue first one-shot')
                     except Exception: pass
                     self._per_shot_active = False
+                else:
+                    # ensure the displayed counter keeps the preserved value (avoid transient resets)
+                    try: self.fire_panel.disp_counter.setValue(self._per_shot_current)
+                    except Exception: pass
                 return
 
             # Burst: forward to worker fire() which arms burst behavior
@@ -485,8 +498,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Ignore that automatic reset if it happened within 0.5s of the user's change so
                 # the counter doesn't reset unexpectedly.
                 last_set = getattr(self, '_last_shots_set_time', 0.0)
+                # suppress reset when user recently changed # Shots
                 if current == 0 and (time.time() - float(last_set) < 0.5):
-                    # skip the automatic reset
+                    pass
+                # suppress the immediate 0 progress emitted when arming a per-shot sequence
+                elif current == 0 and getattr(self, '_suppress_next_zero_progress', False):
+                    # clear the flag and skip the reset
+                    try: self._suppress_next_zero_progress = False
+                    except Exception: pass
                     pass
                 else:
                     self.fire_panel.disp_counter.setValue(current)
