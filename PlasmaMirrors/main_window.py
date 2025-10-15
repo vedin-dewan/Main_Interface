@@ -16,20 +16,8 @@ import os
 import json
 import time
 from datetime import datetime
-try:
-    # Prefer package-style relative import when available
-    from . import file_renamer
-except Exception:
-    # Fallback for script execution (no package context)
-    try:
-        import file_renamer
-    except Exception:
-        # Last-resort: attempt module under PlasmaMirrors
-        try:
-            from PlasmaMirrors import file_renamer
-        except Exception:
-            file_renamer = None
-        from file_info_writer import InfoWriter
+from utilities.file_info_writer import InfoWriter
+import utilities.file_renamer as file_renamer
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
@@ -119,6 +107,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.part2 = StageControlPanel(self.part1.rows)
         self.status_panel = StatusPanel()
         self.placeholder_panel = PlaceholderPanel("Placeholder")
+
+        # --- Info writer thread (background) ---
+        try:
+            if InfoWriter is not None:
+                self._info_thread = QtCore.QThread(self)
+                self._info_writer = InfoWriter()
+                self._info_writer.moveToThread(self._info_thread)
+                # route writer logs to status panel
+                try:
+                    self._info_writer.log.connect(self.status_panel.append_line)
+                except Exception:
+                    pass
+                self._info_thread.started.connect(lambda: None)
+                self._info_thread.start()
+            else:
+                self._info_thread = None
+                self._info_writer = None
+        except Exception:
+            self._info_thread = None
+            self._info_writer = None
         
         # --- Center layout: 2x3 grid ---------------------------------
         central = QtWidgets.QWidget()
@@ -580,7 +588,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 try: self.status_panel.append_line("Per-shot sequence complete")
                 except Exception: pass
 
-    def _rename_output_files(self):
+    def _rename_output_files(self, event_ts: float = None):
         # Delegate to file_renamer.rename_shot_files for maintainability and testability
         try:
             outdir = (self.overall_controls.dir_edit.text() or '').strip()
@@ -605,6 +613,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 logger=getattr(self.status_panel, 'append_line', None),
                 write_info=False,
                 info_label='Info',
+                event_ts=event_ts,
             )
             # keep processed set updated (function already mutates the set passed in)
             try:
@@ -638,7 +647,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         date_s = parts[shot_index + 1]
                         time_s = parts[shot_index + 2]
                 if date_s is None or time_s is None:
-                    ts = datetime.now()
+                    if event_ts is not None:
+                        ets = datetime.fromtimestamp(float(event_ts))
+                        ts = ets
+                    else:
+                        ts = datetime.now()
                     date_s = ts.strftime('%Y%m%d')
                     ms = int(ts.microsecond / 1000)
                     time_s = ts.strftime('%H%M%S') + f"{ms:03d}"
@@ -727,7 +740,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     }
                     if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info', None) is not None:
                         try:
-                            QtCore.QMetaObject.invokeMethod(self._info_writer, 'write_info', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(dict, payload))
+                            self.info_write_request.emit(payload)
                         except Exception:
                             # fallback: call directly (best-effort)
                             try:
@@ -1059,18 +1072,4 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        # --- Info writer thread (background) ---
-        try:
-            self._info_thread = QtCore.QThread(self)
-            self._info_writer = InfoWriter()
-            self._info_writer.moveToThread(self._info_thread)
-            # route writer logs to status panel
-            try:
-                self._info_writer.log.connect(self.status_panel.append_line)
-            except Exception:
-                pass
-            self._info_thread.started.connect(lambda: None)
-            self._info_thread.start()
-        except Exception:
-            self._info_thread = None
-            self._info_writer = None
+        # InfoWriter was initialized in __init__; nothing to do here.
