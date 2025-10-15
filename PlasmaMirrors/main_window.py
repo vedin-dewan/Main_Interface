@@ -746,8 +746,10 @@ class MainWindow(QtWidgets.QMainWindow):
                             try:
                                 self._info_writer.write_info(payload)
                             except Exception as e:
-                                try: self.status_panel.append_line(f"Failed to schedule info write: {e}")
-                                except Exception: pass
+                                try:
+                                    self.status_panel.append_line(f"Failed to schedule info write: {e}")
+                                except Exception:
+                                    pass
                     else:
                         # no background writer available — write synchronously as fallback
                         try:
@@ -755,14 +757,56 @@ class MainWindow(QtWidgets.QMainWindow):
                             with open(info_full, 'w', encoding='utf-8') as fh:
                                 for ln in info_lines:
                                     fh.write(ln + '\n')
-                            try: self.status_panel.append_line(f"Wrote shot info file: {info_name}")
-                            except Exception: pass
+                            try:
+                                self.status_panel.append_line(f"Wrote shot info file: {info_name}")
+                            except Exception:
+                                pass
                         except Exception as e:
-                            try: self.status_panel.append_line(f"Failed to write shot info: {e}")
-                            except Exception: pass
+                            try:
+                                self.status_panel.append_line(f"Failed to write shot info: {e}")
+                            except Exception:
+                                pass
                 except Exception as e:
-                    try: self.status_panel.append_line(f"Failed to prepare/send shot info: {e}")
-                    except Exception: pass
+                    try:
+                        self.status_panel.append_line(f"Failed to prepare/send shot info: {e}")
+                    except Exception:
+                        pass
+
+                # Append one-line SHOT_LOG using the background InfoWriter so writes are serialized
+                try:
+                    if outdir:
+                        shot_payload = {
+                            'outdir': outdir,
+                            'info_name': info_name,
+                            'second_line': '\t'.join(second),
+                        }
+                        # preferred: invoke append_shot_log on the InfoWriter thread via queued signal
+                        if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'append_shot_log', None) is not None:
+                            try:
+                                # use QMetaObject to queue the slot on the writer object
+                                QtCore.QMetaObject.invokeMethod(self._info_writer, 'append_shot_log', QtCore.Qt.ConnectionType.QueuedConnection,
+                                                                QtCore.Q_ARG(dict, shot_payload))
+                            except Exception:
+                                # best-effort direct call as fallback
+                                try:
+                                    self._info_writer.append_shot_log(shot_payload)
+                                except Exception as e:
+                                    try: self.status_panel.append_line(f"Failed to schedule SHOT_LOG append: {e}")
+                                    except Exception: pass
+                        else:
+                            # no background writer available — append synchronously
+                            try:
+                                shot_log_path = os.path.join(outdir, 'SHOT_LOG.txt')
+                                shot_log_line = shot_payload['second_line'] + '\t' + os.path.join(outdir, info_name)
+                                with open(shot_log_path, 'a', encoding='utf-8') as shf:
+                                    shf.write(shot_log_line + '\n')
+                                try: self.status_panel.append_line(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
+                                except Exception: pass
+                            except Exception as e:
+                                try: self.status_panel.append_line(f"Failed to update SHOT_LOG: {e}")
+                                except Exception: pass
+                except Exception:
+                    pass
             except Exception:
                 pass
         except Exception as e:
