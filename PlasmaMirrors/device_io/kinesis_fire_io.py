@@ -297,6 +297,11 @@ class KinesisFireIO(QtCore.QObject):
         if self.out_task is None:
             return
         try:
+            # Emit a short log so the UI can trace whether DAQ writes are occurring
+            try:
+                self.log.emit(f"DAQ write -> shutter={int(bool(shutter))} cam={int(bool(cam))} spec={int(bool(spec))}")
+            except Exception:
+                pass
             self.out_task.write(vals)
         except Exception as e:
             self.error.emit(f"NI-DAQ write failed: {e}")
@@ -335,15 +340,33 @@ class KinesisFireIO(QtCore.QObject):
     def _single__pulse_on(self):
         if not self._in_single_sequence:
             return
-        # high
-        self._write_outputs(1, 1, 1)
+        # high: set Kinesis shutter ON and outputs high
+        try:
+            try: self.log.emit("single_seq: pulse ON -> setting Kinesis shutter ON and outputs HIGH")
+            except Exception: pass
+            try:
+                self._set_shutter_on()
+            except Exception:
+                pass
+            self._write_outputs(1, 1, 1)
+        except Exception:
+            pass
         QtCore.QTimer.singleShot(self.cfg.pulse_ms, self._single__pulse_off)
 
     def _single__pulse_off(self):
         if not self._in_single_sequence:
             return
-        # low
-        self._write_outputs(0, 0, 0)
+        # low: set Kinesis shutter OFF and outputs low
+        try:
+            try: self.log.emit("single_seq: pulse OFF -> setting Kinesis shutter OFF and outputs LOW")
+            except Exception: pass
+            try:
+                self._set_shutter_off()
+            except Exception:
+                pass
+            self._write_outputs(0, 0, 0)
+        except Exception:
+            pass
         # progress update for the shot we just completed
         done = (self._num_shots - max(0, self._single_remaining - 1))
         self.shots_progress.emit(done, self._num_shots)
@@ -380,12 +403,34 @@ class KinesisFireIO(QtCore.QObject):
             except Exception: pass
             # set outputs high for a pulse, then low and signal completion
             try:
+                try:
+                    self.log.emit("fire_one_shot: setting Kinesis shutter ON and outputs HIGH")
+                except Exception:
+                    pass
+                # Also toggle the Kinesis shutter device to reproduce the audible click
+                try:
+                    self._set_shutter_on()
+                except Exception:
+                    pass
                 self._write_outputs(1, 1, 1)
+                try:
+                    self.log.emit("fire_one_shot: outputs HIGH set")
+                except Exception:
+                    pass
             except Exception:
                 pass
             # schedule turning outputs low and emitting done
             def _finish():
                 try:
+                    try:
+                        self.log.emit("fire_one_shot: finishing -> setting Kinesis shutter OFF and outputs LOW")
+                    except Exception:
+                        pass
+                    # Turn Kinesis shutter off to close solenoid
+                    try:
+                        self._set_shutter_off()
+                    except Exception:
+                        pass
                     self._write_outputs(0, 0, 0)
                 except Exception:
                     pass
@@ -401,8 +446,10 @@ class KinesisFireIO(QtCore.QObject):
                         self.shots_progress.emit(1, 1)
                     except Exception:
                         pass
-                    try: self.log.emit("fire_one_shot: finished and signalled")
-                    except Exception: pass
+                    try:
+                        self.log.emit("fire_one_shot: finished and signalled")
+                    except Exception:
+                        pass
                 finally:
                     self._one_shot_active = False
 
