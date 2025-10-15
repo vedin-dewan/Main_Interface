@@ -284,10 +284,18 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
     def _write_outputs(self, shutter: int, cam: int, spec: int):
+        # diagnostic logging to help debug missing triggers
+        try:
+            vals = [bool(shutter), bool(cam), bool(spec)]
+        except Exception:
+            vals = [False, False, False]
+
         if self.out_task is None:
+            self.log.emit(f"_write_outputs: out_task is None, would have written: {vals}")
             return
         try:
-            self.out_task.write([bool(shutter), bool(cam), bool(spec)])
+            self.out_task.write(vals)
+            self.log.emit(f"_write_outputs: wrote {vals}")
         except Exception as e:
             self.error.emit(f"NI-DAQ write failed: {e}")
 
