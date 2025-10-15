@@ -4,5 +4,17 @@
     "Purpose": "ThirdHarmonic",
     "Filters": "Andover265",
     "Serial": "18091566"
+  },
+  {
+    "Name": "BKFLY965",
+    "Purpose": "PM NF",
+    "Filters": "FSQ400",
+    "Serial": "18090965"
+  },
+  {
+    "Name": "CHMLN",
+    "Purpose": "Energy Clibration",
+    "Filters": "",
+    "Serial": "17454664"
   }
 ]
