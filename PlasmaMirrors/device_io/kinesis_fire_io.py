@@ -92,6 +92,8 @@ class KinesisFireIO(QtCore.QObject):
         self._single_remaining: int = 0
         # one-shot state
         self._one_shot_active = False
+        # track whether out_task was available to avoid noisy repeated logs
+        self._out_task_present = None
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
     @QtCore.pyqtSlot()
@@ -150,6 +152,17 @@ class KinesisFireIO(QtCore.QObject):
                 self.error.emit(f"NI-DAQ open failed: {e}")
                 self.out_task = None
                 self.in_task = None
+
+        # Emit a one-time status about DAQ availability to avoid repetitive logs from the poll
+        try:
+            present = bool(self.out_task)
+            if present and self._out_task_present is not True:
+                self.log.emit(f"NI-DAQ outputs available: {self.cfg.out_pin_shutter}, {self.cfg.out_pin_cam}, {self.cfg.out_pin_spec}")
+            elif not present and self._out_task_present is not False:
+                self.log.emit("NI-DAQ outputs not available (out_task is None)")
+            self._out_task_present = present
+        except Exception:
+            pass
 
         # Poll timer (runs in this worker thread)
         self.timer = QtCore.QTimer(self)
@@ -284,20 +297,36 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
     def _write_outputs(self, shutter: int, cam: int, spec: int):
-        # diagnostic logging to help debug missing triggers
+        # Write outputs to NI-DAQ when available. Avoid noisy logs when the DAQ is absent by
+        # reporting availability once at open() and only logging actual writes or errors.
         try:
             vals = [bool(shutter), bool(cam), bool(spec)]
         except Exception:
             vals = [False, False, False]
 
         if self.out_task is None:
-            self.log.emit(f"_write_outputs: out_task is None, would have written: {vals}")
+            # Keep track that out_task is absent but do not spam the log on every poll.
+            if self._out_task_present is not False:
+                try:
+                    self.log.emit("_write_outputs: out_task is None (writes suppressed)")
+                except Exception:
+                    pass
+                self._out_task_present = False
             return
+
+        # out_task exists — perform the write and log success or errors
         try:
             self.out_task.write(vals)
-            self.log.emit(f"_write_outputs: wrote {vals}")
+            try:
+                self.log.emit(f"_write_outputs: wrote {vals}")
+            except Exception:
+                pass
+            self._out_task_present = True
         except Exception as e:
-            self.error.emit(f"NI-DAQ write failed: {e}")
+            try:
+                self.error.emit(f"NI-DAQ write failed: {e}")
+            except Exception:
+                pass
 
     def _read_trigger(self) -> Optional[int]:
         if self.in_task is None:
