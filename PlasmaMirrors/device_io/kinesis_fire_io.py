@@ -69,7 +69,9 @@ class KinesisFireIO(QtCore.QObject):
     status = QtCore.pyqtSignal(str)              # human-readable status line
     shots_progress = QtCore.pyqtSignal(int, int) # (current, total)
     # Emitted when a single externally-requested shot completes (one pulse finished)
-    single_shot_done = QtCore.pyqtSignal()
+    # The signal carries a float timestamp (seconds since epoch) obtained when the DAQ write/read
+    # completed and the shot is considered executed.
+    single_shot_done = QtCore.pyqtSignal(float)
 
     # ---------- lifecycle ----------
     def __init__(self, cfg: FireConfig):
@@ -390,7 +392,8 @@ class KinesisFireIO(QtCore.QObject):
                 try:
                     # emit a per-shot completion signal so the UI can react (rename etc)
                     try:
-                        self.single_shot_done.emit()
+                        # emit DAQ timestamp so UI and renamer can use a common timestamp
+                        self.single_shot_done.emit(time.time())
                     except Exception:
                         pass
                     # also emit a small shots_progress increment (1,1) so UIs listening see activity

@@ -38,6 +38,7 @@ def rename_shot_files(
     logger: Optional[Callable[[str], None]] = None,
     write_info: bool = False,
     info_label: str = 'Info',
+    event_ts: Optional[float] = None,
 ) -> Tuple[List[Tuple[str, str]], Set[str]]:
     """Poll `outdir` for files matching any of `tokens` and rename the newest stable file per token.
 
@@ -124,7 +125,12 @@ def rename_shot_files(
                     try:
                         e = os.path.basename(cand)
                         root, ext = os.path.splitext(e)
-                        ts = datetime.now()
+                        # use provided event timestamp (DAQ timestamp) if available so all files share same ts
+                        if event_ts is not None:
+                            ets = datetime.fromtimestamp(float(event_ts))
+                            ts = ets
+                        else:
+                            ts = datetime.now()
                         date_s = ts.strftime('%Y%m%d')
                         ms = int(ts.microsecond / 1000)
                         time_s = ts.strftime('%H%M%S') + f"{ms:03d}"
@@ -178,7 +184,10 @@ def rename_shot_files(
     # Optionally write an info file summarizing the shot and renamed files
     if write_info:
         try:
-            ts = datetime.now()
+            if event_ts is not None:
+                ts = datetime.fromtimestamp(float(event_ts))
+            else:
+                ts = datetime.now()
             date_s = ts.strftime('%Y%m%d')
             ms = int(ts.microsecond / 1000)
             time_s = ts.strftime('%H%M%S') + f"{ms:03d}"

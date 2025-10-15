@@ -29,6 +29,7 @@ except Exception:
             from PlasmaMirrors import file_renamer
         except Exception:
             file_renamer = None
+        from file_info_writer import InfoWriter
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
@@ -271,6 +272,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fire_io.shots_progress.connect(self._on_shots_progress)
             # connect the new single-shot-done signal from the worker (if available)
             try:
+                # single_shot_done now provides a float timestamp (seconds since epoch)
                 self.fire_io.single_shot_done.connect(self._on_single_shot_done)
             except Exception:
                 pass
@@ -524,8 +526,8 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-    def _on_single_shot_done(self):
-        """Called when the fire worker signals that a single shot/pulse finished
+    def _on_single_shot_done(self, event_ts: float = None):
+        """Called when the fire worker signals that a single shot/pulse finished.
         This runs in the UI thread because the worker emits the signal; perform rename then continue if per-shot active.
         """
         try:
@@ -536,36 +538,47 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._rename_shotnum = int(getattr(self, '_per_shot_current', 0))
                 except Exception:
                     pass
-                self._rename_output_files()
+
+                # pass the DAQ event timestamp into the rename so filenames and info share the same ts
+                try:
+                    self._rename_output_files(event_ts=event_ts)
+                except Exception:
+                    # fallback to no-ts
+                    try:
+                        self._rename_output_files()
+                    except Exception as e:
+                        try: self.status_panel.append_line(f"Rename on-shot failed: {e}")
+                        except Exception: pass
             except Exception as e:
                 try: self.status_panel.append_line(f"Rename on-shot failed: {e}")
                 except Exception: pass
+        except Exception as e:
+            try: self.status_panel.append_line(f"Rename on-shot failed: {e}")
+            except Exception: pass
 
-            # If we are orchestrating per-shot and haven't finished, trigger the next shot
-            if getattr(self, '_per_shot_active', False):
-                self._per_shot_current += 1
-                # update display
-                try: self.fire_panel.disp_counter.setValue(self._per_shot_current)
+        # If we are orchestrating per-shot and haven't finished, trigger the next shot
+        if getattr(self, '_per_shot_active', False):
+            self._per_shot_current += 1
+            # update display
+            try: self.fire_panel.disp_counter.setValue(self._per_shot_current)
+            except Exception: pass
+
+            # continue until displayed counter reaches absolute target
+            target = getattr(self, '_per_shot_target', None)
+            if target is not None and self._per_shot_current < target:
+                # fire next shot in the worker thread via queued call to fire_one_shot
+                try:
+                    QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                except Exception:
+                    try: self.status_panel.append_line("Failed to queue next one-shot")
+                    except Exception: pass
+            else:
+                # finished
+                self._per_shot_active = False
+                try: self._per_shot_target = None
                 except Exception: pass
-
-                # continue until displayed counter reaches absolute target
-                target = getattr(self, '_per_shot_target', None)
-                if target is not None and self._per_shot_current < target:
-                    # fire next shot in the worker thread via queued call to fire_one_shot
-                    try:
-                        QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
-                    except Exception:
-                        try: self.status_panel.append_line("Failed to queue next one-shot")
-                        except Exception: pass
-                else:
-                    # finished
-                    self._per_shot_active = False
-                    try: self._per_shot_target = None
-                    except Exception: pass
-                    try: self.status_panel.append_line("Per-shot sequence complete")
-                    except Exception: pass
-        except Exception:
-            pass
+                try: self.status_panel.append_line("Per-shot sequence complete")
+                except Exception: pass
 
     def _rename_output_files(self):
         # Delegate to file_renamer.rename_shot_files for maintainability and testability
@@ -704,17 +717,38 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
 
-                # write file
+                # prepare payload and send to background InfoWriter
                 try:
                     info_name = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_Info.txt"
-                    info_full = os.path.join(outdir, info_name)
-                    with open(info_full, 'w', encoding='utf-8') as fh:
-                        for ln in info_lines:
-                            fh.write(ln + '\n')
-                    try: self.status_panel.append_line(f"Wrote shot info file: {info_name}")
-                    except Exception: pass
+                    payload = {
+                        'outdir': outdir,
+                        'info_name': info_name,
+                        'info_lines': info_lines,
+                    }
+                    if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info', None) is not None:
+                        try:
+                            QtCore.QMetaObject.invokeMethod(self._info_writer, 'write_info', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(dict, payload))
+                        except Exception:
+                            # fallback: call directly (best-effort)
+                            try:
+                                self._info_writer.write_info(payload)
+                            except Exception as e:
+                                try: self.status_panel.append_line(f"Failed to schedule info write: {e}")
+                                except Exception: pass
+                    else:
+                        # no background writer available — write synchronously as fallback
+                        try:
+                            info_full = os.path.join(outdir, info_name)
+                            with open(info_full, 'w', encoding='utf-8') as fh:
+                                for ln in info_lines:
+                                    fh.write(ln + '\n')
+                            try: self.status_panel.append_line(f"Wrote shot info file: {info_name}")
+                            except Exception: pass
+                        except Exception as e:
+                            try: self.status_panel.append_line(f"Failed to write shot info: {e}")
+                            except Exception: pass
                 except Exception as e:
-                    try: self.status_panel.append_line(f"Failed to write shot info: {e}")
+                    try: self.status_panel.append_line(f"Failed to prepare/send shot info: {e}")
                     except Exception: pass
             except Exception:
                 pass
@@ -992,6 +1026,25 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fire_thread.wait(1500)
         except Exception:
             pass
+        # Shutdown info writer thread if present
+        try:
+            if getattr(self, '_info_writer', None) is not None:
+                try:
+                    QtCore.QMetaObject.invokeMethod(self._info_writer, 'close', QtCore.Qt.ConnectionType.QueuedConnection)
+                except Exception:
+                    try: self._info_writer.close()
+                    except Exception: pass
+        except Exception:
+            pass
+        try:
+            if getattr(self, '_info_thread', None) is not None:
+                try:
+                    self._info_thread.quit()
+                    self._info_thread.wait(500)
+                except Exception:
+                    pass
+        except Exception:
+            pass
         super().closeEvent(a0)
         # Save PM panel settings on exit (best-effort)
         try:
@@ -1005,3 +1058,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
         except Exception:
             pass
+
+        # --- Info writer thread (background) ---
+        try:
+            self._info_thread = QtCore.QThread(self)
+            self._info_writer = InfoWriter()
+            self._info_writer.moveToThread(self._info_thread)
+            # route writer logs to status panel
+            try:
+                self._info_writer.log.connect(self.status_panel.append_line)
+            except Exception:
+                pass
+            self._info_thread.started.connect(lambda: None)
+            self._info_thread.start()
+        except Exception:
+            self._info_thread = None
+            self._info_writer = None
