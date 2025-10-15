@@ -10,6 +10,7 @@ from panels.PM_panel import PMPanel
 from panels.fire_controls_panel import FireControlsPanel
 from device_io.kinesis_fire_io import KinesisFireIO, FireConfig
 from panels.placeholder_panel import PlaceholderPanel
+from panels.Flip_control_panel import FlipControlPanel
 import os
 import json
 
@@ -53,7 +54,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.overall_controls = PlaceholderPanel("Overall Controls")
         self.fire_panel    = FireControlsPanel()
-        self.placeholder = PlaceholderPanel("Placeholder")
+        self.flip_panel = FlipControlPanel()
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
         self.status_panel = StatusPanel()
@@ -68,7 +69,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Top row: Overall Controls | Fire Controls | PM panel
         grid.addWidget(self.overall_controls, 0, 0)
         grid.addWidget(self.fire_panel, 0, 1)
-        grid.addWidget(self.placeholder, 0, 2)
+        grid.addWidget(self.flip_panel, 0, 2)
 
         # Bottom row: Status | Stages (part1) | Stage Controls (part2)
         grid.addWidget(self.status_panel, 0 + 1, 0)   # row 1, col 0
