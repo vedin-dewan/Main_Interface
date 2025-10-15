@@ -396,21 +396,68 @@ class MainWindow(QtWidgets.QMainWindow):
         If Single Shot mode is selected, start watching for new output files to rename after shots complete.
         """
         try:
-            if not getattr(self.fire_panel, 'rb_single', None) or not self.fire_panel.rb_single.isChecked():
-                return
-        except Exception:
-            return
-        # record time and metadata for later matching
-        try:
-            self._rename_search_start = time.time()
-            self._awaiting_rename = True
-            self._rename_experiment = (self.overall_controls.exp_edit.text() or 'Experiment').strip()
-            # take shot number as current display counter + 1 (best-effort)
+            # determine selected mode (prefer the panel radios when available)
+            mode = 'continuous'
             try:
-                self._rename_shotnum = int(self.fire_panel.disp_counter.value()) + 1
+                if getattr(self.fire_panel, 'rb_single', None) and self.fire_panel.rb_single.isChecked():
+                    mode = 'single'
+                elif getattr(self.fire_panel, 'rb_burst', None) and self.fire_panel.rb_burst.isChecked():
+                    mode = 'burst'
+                else:
+                    mode = 'continuous'
             except Exception:
-                self._rename_shotnum = 1
-            self.status_panel.append_line(f"Armed rename watcher: experiment='{self._rename_experiment}', shot={self._rename_shotnum}")
+                mode = 'continuous'
+
+            # Single-mode: set up rename watcher and start per-shot orchestration (one_shot calls)
+            if mode == 'single':
+                # record time and metadata for later matching
+                try:
+                    self._rename_search_start = time.time()
+                    self._awaiting_rename = True
+                    self._rename_experiment = (self.overall_controls.exp_edit.text() or 'Experiment').strip()
+                    # take shot number as current display counter + 1 (best-effort)
+                    try:
+                        self._rename_shotnum = int(self.fire_panel.disp_counter.value()) + 1
+                    except Exception:
+                        self._rename_shotnum = 1
+                    self.status_panel.append_line(f"Armed rename watcher: experiment='{self._rename_experiment}', shot={self._rename_shotnum}")
+                except Exception:
+                    pass
+
+                # start per-shot orchestration: fire one shot at a time and wait for rename between shots
+                try:
+                    shots = int(self.fire_panel.spin_shots.value()) if getattr(self.fire_panel, 'spin_shots', None) else getattr(self.fire_io, '_num_shots', 1)
+                except Exception:
+                    shots = getattr(self.fire_io, '_num_shots', 1)
+
+                # init per-shot counters and queue first shot
+                self._per_shot_active = True
+                self._per_shot_total = max(1, int(shots))
+                self._per_shot_current = 0
+                try:
+                    QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                except Exception:
+                    try: self.status_panel.append_line('Failed to queue first one-shot')
+                    except Exception: pass
+                    self._per_shot_active = False
+                return
+
+            # Burst: forward to worker fire() which arms burst behavior
+            if mode == 'burst':
+                try:
+                    QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire', QtCore.Qt.ConnectionType.QueuedConnection)
+                except Exception:
+                    try: self.status_panel.append_line('Failed to queue burst fire()')
+                    except Exception: pass
+                return
+
+            # Continuous: forward to worker (worker treats continuous fire as a no-op/arm)
+            try:
+                QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire', QtCore.Qt.ConnectionType.QueuedConnection)
+            except Exception:
+                try: self.status_panel.append_line('Failed to queue continuous fire()')
+                except Exception: pass
+            return
         except Exception:
             pass
 
