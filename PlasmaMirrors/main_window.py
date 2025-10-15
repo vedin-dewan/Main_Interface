@@ -590,12 +590,132 @@ class MainWindow(QtWidgets.QMainWindow):
                 stable_s=stable_time,
                 processed_paths=self._processed_output_files,
                 logger=getattr(self.status_panel, 'append_line', None),
-                write_info=True,
+                write_info=False,
                 info_label='Info',
             )
             # keep processed set updated (function already mutates the set passed in)
             try:
                 self._processed_output_files.update(processed)
+            except Exception:
+                pass
+            # Build a mapping token -> newfull for files we renamed
+            try:
+                renamed_map = {}
+                for old, new in renamed:
+                    nb = os.path.basename(new).lower()
+                    for t in tokens:
+                        if t and t.lower() in nb:
+                            renamed_map[t] = new
+                            break
+            except Exception:
+                renamed_map = {}
+
+            # Compose ShotInfo file following the requested format
+            try:
+                # determine timestamp part from first renamed file if present
+                date_s = None
+                time_s = None
+                if renamed:
+                    # parse pattern: <exp>_Shot{shotnum:05d}_{YYYYMMDD}_{HHMMSSmmm}_{label}_0.ext
+                    first_new = os.path.basename(renamed[0][1])
+                    parts = first_new.split('_')
+                    # find the part after Shotxxxxx
+                    shot_index = next((i for i, p in enumerate(parts) if p.startswith('Shot')), None)
+                    if shot_index is not None and len(parts) > shot_index + 2:
+                        date_s = parts[shot_index + 1]
+                        time_s = parts[shot_index + 2]
+                if date_s is None or time_s is None:
+                    ts = datetime.now()
+                    date_s = ts.strftime('%Y%m%d')
+                    ms = int(ts.microsecond / 1000)
+                    time_s = ts.strftime('%H%M%S') + f"{ms:03d}"
+
+                # human-readable date and time
+                try:
+                    hr_date = f"{int(date_s[4:6])}/{int(date_s[6:8])}/{int(date_s[0:4])}"
+                except Exception:
+                    hr_date = datetime.now().strftime('%m/%d/%Y')
+                try:
+                    hh = int(time_s[0:2])
+                    mm = int(time_s[2:4])
+                    ss = int(time_s[4:6])
+                    ampm = 'AM'
+                    display_h = hh
+                    if hh == 0:
+                        display_h = 12
+                        ampm = 'AM'
+                    elif hh == 12:
+                        display_h = 12
+                        ampm = 'PM'
+                    elif hh > 12:
+                        display_h = hh - 12
+                        ampm = 'PM'
+                    time_display = f"{display_h}:{mm:02d}:{ss:02d} {ampm}"
+                except Exception:
+                    time_display = datetime.now().strftime('%I:%M:%S %p')
+
+                info_lines = []
+                # first line
+                info_lines.append("ShotInfoWriter: VERSION_2.0.0")
+                # second line: Shot <n> <mm/dd/yyyy> <hh:mm:ss AM/PM> then Abr-value pairs
+                second = ["Shot", str(shotnum), hr_date, time_display]
+                try:
+                    for r in getattr(self.part1, 'rows', []):
+                        abr = getattr(r.info, 'short', '')
+                        val = float(getattr(r.info, 'eng_value', 0.0) or 0.0)
+                        second.append(f"{abr}-{val:.3f}")
+                except Exception:
+                    pass
+                info_lines.append('\t'.join(second))
+
+                # third line: just numeric positions in order
+                third_vals = []
+                try:
+                    for r in getattr(self.part1, 'rows', []):
+                        val = float(getattr(r.info, 'eng_value', 0.0) or 0.0)
+                        third_vals.append(f"{val:.3f}")
+                except Exception:
+                    pass
+                info_lines.append('\t'.join(third_vals))
+
+                # camera lines: include only cameras with renamed files
+                try:
+                    cams_list = getattr(self.device_tabs, '_cameras', [])
+                    cam_by_name = {str(c.get('Name','')).strip(): c for c in cams_list if c.get('Name')}
+                    for name, newfull in sorted(((n, p) for n, p in renamed_map.items() if n in cam_by_name), key=lambda x: x[0]):
+                        c = cam_by_name.get(name, {})
+                        purpose = str(c.get('Purpose','')).strip()
+                        filters = str(c.get('Filters','')).strip()
+                        # format: Name $ Purpose $ Filters $ 		 fullpath
+                        info_lines.append(f"{name} $\t{purpose} $\t{filters} $\t\t{newfull}")
+                except Exception:
+                    pass
+
+                # spectrometer lines: include only spectrometers with renamed files
+                try:
+                    specs_list = getattr(self.device_tabs, '_spectrometers', [])
+                    # map filename token -> spectrometer entry
+                    spec_by_token = {str(s.get('filename','')).strip(): s for s in specs_list if s.get('filename')}
+                    for token, newfull in sorted(((t, p) for t, p in renamed_map.items() if t in spec_by_token), key=lambda x: x[0]):
+                        s = spec_by_token.get(token, {})
+                        name = str(s.get('name','')).strip()
+                        label = f"{name}Spec" if name else f"{token}Spec"
+                        info_lines.append(f"{token} $\t{label} $\t\t{newfull}")
+                except Exception:
+                    pass
+
+                # write file
+                try:
+                    info_name = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_Info.txt"
+                    info_full = os.path.join(outdir, info_name)
+                    with open(info_full, 'w', encoding='utf-8') as fh:
+                        for ln in info_lines:
+                            fh.write(ln + '\n')
+                    try: self.status_panel.append_line(f"Wrote shot info file: {info_name}")
+                    except Exception: pass
+                except Exception as e:
+                    try: self.status_panel.append_line(f"Failed to write shot info: {e}")
+                    except Exception: pass
             except Exception:
                 pass
         except Exception as e:
