@@ -49,7 +49,7 @@ class FireControlsPanel(QtWidgets.QWidget):
         lab_interval = QtWidgets.QLabel("Interval (ms):")
         self.spin_interval = QtWidgets.QSpinBox()
         self.spin_interval.setRange(1, 1_000_000)  # 1 ms to 1000 s
-        self.spin_interval.setValue(100)           # default 100 ms
+        self.spin_interval.setValue(2000)           # default 2000 ms
         self.spin_interval.setFixedWidth(100)
         self.spin_interval.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
@@ -103,6 +103,13 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.spin_shots.editingFinished.connect(self._emit_shots)
         self.btn_fire.clicked.connect(self.request_fire)
 
+        # ensure initial visual state for the fire button (continuous by default)
+        try:
+            self._current_mode = 'continuous'
+            self._update_fire_button_state()
+        except Exception:
+            pass
+
     # ----- slots for backend to update UI -----
     @QtCore.pyqtSlot(str)
     def set_status(self, text: str):
@@ -110,7 +117,28 @@ class FireControlsPanel(QtWidgets.QWidget):
 
     # ----- internals -----
     def _emit_mode(self, m: str):
+        # remember current mode and update UI
+        try:
+            self._current_mode = m
+            self._update_fire_button_state()
+        except Exception:
+            pass
         self.request_mode.emit(m)
+
+    def _update_fire_button_state(self):
+        """Enable the Fire button only in 'single' or 'burst' modes. In continuous mode disable and grey it out."""
+        try:
+            mode = getattr(self, '_current_mode', 'continuous')
+            enabled = (mode in ('single', 'burst'))
+            self.btn_fire.setEnabled(enabled)
+            if enabled:
+                # active red button
+                self.btn_fire.setStyleSheet("background:#D30000; color:white; font-weight:700;")
+            else:
+                # faded/disabled appearance
+                self.btn_fire.setStyleSheet("background:#444444; color:#9a9a9a; font-weight:600;")
+        except Exception:
+            pass
 
     def _emit_shots(self):
         self.request_shots.emit(int(self.spin_shots.value()))

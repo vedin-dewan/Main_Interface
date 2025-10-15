@@ -68,6 +68,8 @@ class KinesisFireIO(QtCore.QObject):
     connected = QtCore.pyqtSignal(str)           # serial string
     status = QtCore.pyqtSignal(str)              # human-readable status line
     shots_progress = QtCore.pyqtSignal(int, int) # (current, total)
+    # Emitted when a single externally-requested shot completes (one pulse finished)
+    single_shot_done = QtCore.pyqtSignal()
 
     # ---------- lifecycle ----------
     def __init__(self, cfg: FireConfig):
@@ -88,6 +90,8 @@ class KinesisFireIO(QtCore.QObject):
         # single-train state machine
         self._in_single_sequence: bool = False
         self._single_remaining: int = 0
+        # one-shot state
+        self._one_shot_active = False
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
     @QtCore.pyqtSlot()
@@ -339,6 +343,7 @@ class KinesisFireIO(QtCore.QObject):
         else:
             self._in_single_sequence = False
             self.status.emit("Single sequence complete")
+            # emit final shots_progress for whole sequence (already emitted in loop)
 
     def _abort_single_sequence(self):
         if self._in_single_sequence:
@@ -346,6 +351,45 @@ class KinesisFireIO(QtCore.QObject):
             self._single_remaining = 0
             self._write_outputs(0, 0, 0)
             self.status.emit("Single sequence aborted")
+
+    @QtCore.pyqtSlot()
+    def fire_one_shot(self):
+        """Perform a single pulse (pulse_ms high, then low) and emit single_shot_done when finished.
+        This runs in the fire IO thread; callers should invoke it via a queued connection.
+        """
+        if self._one_shot_active:
+            # already running a one-shot; ignore
+            return
+        try:
+            self._one_shot_active = True
+            # set outputs high for a pulse, then low and signal completion
+            try:
+                self._write_outputs(1, 1, 1)
+            except Exception:
+                pass
+            # schedule turning outputs low and emitting done
+            def _finish():
+                try:
+                    self._write_outputs(0, 0, 0)
+                except Exception:
+                    pass
+                try:
+                    # emit a per-shot completion signal so the UI can react (rename etc)
+                    self.single_shot_done.emit()
+                    # also emit a small shots_progress increment (1,1) so UIs listening see activity
+                    try:
+                        self.shots_progress.emit(1, 1)
+                    except Exception:
+                        pass
+                finally:
+                    self._one_shot_active = False
+
+            QtCore.QTimer.singleShot(self.cfg.pulse_ms, _finish)
+        except Exception:
+            try:
+                self._one_shot_active = False
+            except Exception:
+                pass
 
     # -------- periodic poll --------
     @QtCore.pyqtSlot()

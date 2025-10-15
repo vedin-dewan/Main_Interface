@@ -14,6 +14,8 @@ from panels.device_tabs_panel import DeviceTabsPanel
 from panels.overall_control_panel import SavingPanel
 import os
 import json
+import time
+from datetime import datetime
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
@@ -89,6 +91,15 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self.overall_controls = SavingPanel()
         self.fire_panel    = FireControlsPanel()
+        # Use the Interval (ms) control from the Fire panel as the rename wait budget (ms)
+        try:
+            # initialize attribute from current UI value
+            self._rename_max_wait_ms = int(self.fire_panel.spin_interval.value())
+            # keep it updated whenever the user changes the interval
+            self.fire_panel.spin_interval.valueChanged.connect(lambda v: setattr(self, '_rename_max_wait_ms', int(v)))
+        except Exception:
+            # fallback default
+            self._rename_max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)
         self.pm_panel= PMPanel()
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
@@ -217,35 +228,39 @@ class MainWindow(QtWidgets.QMainWindow):
         # OPTIONAL: if the thread ever stops, ensure close got called
         self.fire_thread.finished.connect(self.fire_io.close)
         self.fire_thread.start()
-
         # Panel → IO
         self.fire_panel.request_mode.connect(self.fire_io.set_mode)
         self.fire_panel.request_shots.connect(self.fire_io.set_num_shots)
-        self.fire_panel.request_fire.connect(self.fire_io.fire)
+        # forward Fire to IO and also handle UI-side bookkeeping in MainWindow
+        # For per-shot control, hook request_fire to a MainWindow handler that
+        # will orchestrate firing one shot at a time and wait for rename before next.
+        self.fire_panel.request_fire.connect(self._on_fire_clicked)
 
         # worker -> UI
         self.fire_io.status.connect(self.fire_panel.set_status)
         #self.fire_io.shots_progress.connect(self.fire_panel.set_progress)
         self.fire_io.log.connect(self.status_panel.append_line)     # if you have a log area
         self.fire_io.error.connect(self.status_panel.append_line)
+        # hook into shots progress to rename output files after single-shot captures
+        try:
+            self.fire_io.shots_progress.connect(self._on_shots_progress)
+            # connect the new single-shot-done signal from the worker (if available)
+            try:
+                self.fire_io.single_shot_done.connect(self._on_single_shot_done)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
         # thread-safe wiring
         self.req_read.connect(self.stage.read_position_speed, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_bounds.connect(self.stage.get_limits, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_set_lbound.connect(self.stage.set_lower_limit, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_set_ubound.connect(self.stage.set_upper_limit, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.req_abs.connect(self.stage.move_absolute, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_jog.connect(self.stage.move_delta, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_home.connect(self.stage.home, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_spd.connect(self.stage.set_target_speed, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_stop.connect(self.stage.stop, QtCore.Qt.ConnectionType.QueuedConnection)
-
-        #connect each rows red button to the stop function
-        for addr, row in enumerate(self.part1.rows, start=1):
-            row.light_red.clicked.connect(lambda checked=False, a=addr, u=row.info.unit: self.req_stop.emit(a, u))
-
-        # UI → main window handlers
-        self.part2.action_performed.connect(self.status_panel.append_line)
         self.part2.request_move_absolute.connect(self._on_request_move_absolute)
         self.part2.request_home.connect(self._on_request_home)
         self.part2.request_move_delta.connect(self._on_request_move_delta)
@@ -256,6 +271,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.part2.request_move_to_saved.connect(self._on_request_move_to_saved)
         self._saved_move_queue = []
         self._saved_move_active = False
+
+        # bookkeeping for renaming files produced by cameras/spectrometers
+        self._processed_output_files = set()  # full paths already renamed/handled
+        self._last_shots_done = 0
+        # per-shot orchestration state
+        self._per_shot_active = False
+        self._per_shot_total = 0
+        self._per_shot_current = 0
 
         # style
         self.setStyleSheet(
@@ -367,6 +390,224 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
         except Exception:
             pass
+
+    def _on_fire_clicked(self):
+        """Called in the UI thread when the Fire button is clicked.
+        If Single Shot mode is selected, start watching for new output files to rename after shots complete.
+        """
+        try:
+            if not getattr(self.fire_panel, 'rb_single', None) or not self.fire_panel.rb_single.isChecked():
+                return
+        except Exception:
+            return
+        # record time and metadata for later matching
+        try:
+            self._rename_search_start = time.time()
+            self._awaiting_rename = True
+            self._rename_experiment = (self.overall_controls.exp_edit.text() or 'Experiment').strip()
+            # take shot number as current display counter + 1 (best-effort)
+            try:
+                self._rename_shotnum = int(self.fire_panel.disp_counter.value()) + 1
+            except Exception:
+                self._rename_shotnum = 1
+            self.status_panel.append_line(f"Armed rename watcher: experiment='{self._rename_experiment}', shot={self._rename_shotnum}")
+        except Exception:
+            pass
+
+    @QtCore.pyqtSlot(int, int)
+    def _on_shots_progress(self, current: int, total: int):
+        """Handle shots progress updates from the fire IO.
+        When a single-shot sequence completes and we were awaiting rename, perform renaming.
+        """
+        try:
+            # update UI counter if available
+            try:
+                self.fire_panel.disp_counter.setValue(current)
+            except Exception:
+                pass
+            # if we were awaiting and the sequence completed, run rename
+            if getattr(self, '_awaiting_rename', False) and total and current >= total:
+                try:
+                    self._rename_output_files()
+                except Exception as e:
+                    try: self.status_panel.append_line(f"Rename step failed: {e}")
+                    except Exception: pass
+                finally:
+                    self._awaiting_rename = False
+        except Exception:
+            pass
+
+    def _on_single_shot_done(self):
+        """Called when the fire worker signals that a single shot/pulse finished.
+        This runs in the UI thread because the worker emits the signal; perform rename then continue if per-shot active.
+        """
+        try:
+            # perform rename now (best-effort)
+            try:
+                self._rename_output_files()
+            except Exception as e:
+                try: self.status_panel.append_line(f"Rename on-shot failed: {e}")
+                except Exception: pass
+
+            # If we are orchestrating per-shot and haven't finished, trigger the next shot
+            if getattr(self, '_per_shot_active', False):
+                self._per_shot_current += 1
+                # update display
+                try: self.fire_panel.disp_counter.setValue(self._per_shot_current)
+                except Exception: pass
+
+                if self._per_shot_current < self._per_shot_total:
+                    # fire next shot in the worker thread via queued call to fire_one_shot
+                    try:
+                        QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                    except Exception:
+                        try: self.status_panel.append_line("Failed to queue next one-shot")
+                        except Exception: pass
+                else:
+                    # finished
+                    self._per_shot_active = False
+                    try: self.status_panel.append_line("Per-shot sequence complete")
+                    except Exception: pass
+        except Exception:
+            pass
+
+    def _rename_output_files(self):
+        """Scan the output directory and rename exactly one newest, stable file per camera/spectrometer token.
+        Behavior:
+          - For each camera name and spectrometer filename token, pick the newest file in the output
+            directory whose name contains that token (case-insensitive) and which hasn't been processed.
+          - Wait until that candidate file's size is stable for a short window (to avoid renaming in-progress files).
+          - Rename the stable file to the ExperimentName_ShotNNNNN_YYYYMMDD_HHMMSSmmm_name_0.suffix format.
+          - Only one file per token is renamed. The function will poll/rescan until either a file is renamed
+            for a token or the timeout elapses.
+        """
+        try:
+            outdir = (self.overall_controls.dir_edit.text() or '').strip()
+            if not outdir or not os.path.isdir(outdir):
+                try: self.status_panel.append_line(f"Rename skipped: invalid output dir '{outdir}'")
+                except Exception: pass
+                return
+
+            # tokens to match: camera Names first (for label readability), then spectrometer filenames
+            cams = [str(c.get('Name','')).strip() for c in getattr(self.device_tabs, '_cameras', []) if c.get('Name')]
+            specs = [str(s.get('filename','')).strip() for s in getattr(self.device_tabs, '_spectrometers', []) if s.get('filename')]
+            tokens = cams + specs
+            tokens_l = [t.lower() for t in tokens]
+
+            shotnum = getattr(self, '_rename_shotnum', 1)
+            exp = getattr(self, '_rename_experiment', 'Experiment')
+
+            # timing/stability policy (tunable via attributes)
+            max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)   # total wait budget per token (ms)
+            poll_ms = getattr(self, '_rename_poll_ms', 200)           # directory poll interval (ms)
+            stable_time = getattr(self, '_rename_stable_time', 0.3)   # seconds size must remain unchanged
+            deadline = time.time() + (max_wait_ms / 1000.0)
+
+            total_renamed = 0
+
+            # Process tokens in order; rename up to one file per token
+            for idx, orig_tok in enumerate(tokens):
+                token = tokens_l[idx]
+                if not token:
+                    continue
+
+                candidate = None
+                candidate_last_size = -1
+                stable_since = None
+
+                # loop until we either accept a stable candidate or timeout
+                while time.time() < deadline:
+                    # rescan directory for newest candidate for this token
+                    try:
+                        entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
+                    except Exception:
+                        entries = []
+
+                    newest = None
+                    newest_mtime = 0
+                    for fname in entries:
+                        full = os.path.join(outdir, fname)
+                        if full in self._processed_output_files:
+                            continue
+                        if token in fname.lower():
+                            try:
+                                m = os.path.getmtime(full)
+                            except Exception:
+                                m = 0
+                            if newest is None or m > newest_mtime:
+                                newest = full
+                                newest_mtime = m
+
+                    if newest is None:
+                        # no candidate yet; wait a bit and retry
+                        try: QtWidgets.QApplication.processEvents()
+                        except Exception: pass
+                        time.sleep(poll_ms / 1000.0)
+                        continue
+
+                    # if candidate changed since last poll, reset stability tracking
+                    if candidate != newest:
+                        candidate = newest
+                        candidate_last_size = -1
+                        stable_since = None
+
+                    # check size stability for the candidate
+                    try:
+                        cur_size = os.path.getsize(candidate)
+                    except Exception:
+                        cur_size = -1
+
+                    now = time.time()
+                    if cur_size == candidate_last_size and cur_size >= 0:
+                        if stable_since is None:
+                            stable_since = now
+                        elif (now - stable_since) >= stable_time:
+                            # candidate is stable — perform rename
+                            try:
+                                e = os.path.basename(candidate)
+                                root, ext = os.path.splitext(e)
+                                ts = datetime.now()
+                                date_s = ts.strftime('%Y%m%d')
+                                ms = int(ts.microsecond / 1000)
+                                time_s = ts.strftime('%H%M%S') + f"{ms:03d}"
+                                label = orig_tok
+                                newname = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_{label}_0{ext}"
+                                newfull = os.path.join(outdir, newname)
+                                if os.path.exists(newfull):
+                                    try:
+                                        base, ex = os.path.splitext(newfull)
+                                        newfull = f"{base}_dup{ex}"
+                                    except Exception:
+                                        pass
+                                os.rename(candidate, newfull)
+                                self._processed_output_files.add(newfull)
+                                total_renamed += 1
+                                try: self.status_panel.append_line(f"Renamed '{os.path.basename(candidate)}' → '{os.path.basename(newfull)}'")
+                                except Exception: pass
+                            except Exception as e:
+                                try: self.status_panel.append_line(f"Failed to rename '{candidate}': {e}")
+                                except Exception: pass
+                            break
+                    else:
+                        # size changed — restart stability timer
+                        candidate_last_size = cur_size
+                        stable_since = None
+
+                    try: QtWidgets.QApplication.processEvents()
+                    except Exception: pass
+                    time.sleep(poll_ms / 1000.0)
+
+                # finished attempting this token (either renamed or timeout)
+                if total_renamed == 0:
+                    try: self.status_panel.append_line(f"Rename: no stable file found for '{orig_tok}' (or timed out).")
+                    except Exception: pass
+
+            if total_renamed == 0:
+                try: self.status_panel.append_line("Rename step: completed with 0 files renamed.")
+                except Exception: pass
+        except Exception as e:
+            try: self.status_panel.append_line(f"Rename exception: {e}")
+            except Exception: pass
 
     @QtCore.pyqtSlot(str, int)
     def _on_device_connect_requested(self, port: str, baud: int):
