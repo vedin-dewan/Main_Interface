@@ -367,9 +367,15 @@ class KinesisFireIO(QtCore.QObject):
         """
         if self._one_shot_active:
             # already running a one-shot; ignore
+            try:
+                self.log.emit("fire_one_shot ignored: already active")
+            except Exception:
+                pass
             return
         try:
             self._one_shot_active = True
+            try: self.log.emit("fire_one_shot: started")
+            except Exception: pass
             # set outputs high for a pulse, then low and signal completion
             try:
                 self._write_outputs(1, 1, 1)
@@ -383,12 +389,17 @@ class KinesisFireIO(QtCore.QObject):
                     pass
                 try:
                     # emit a per-shot completion signal so the UI can react (rename etc)
-                    self.single_shot_done.emit()
+                    try:
+                        self.single_shot_done.emit()
+                    except Exception:
+                        pass
                     # also emit a small shots_progress increment (1,1) so UIs listening see activity
                     try:
                         self.shots_progress.emit(1, 1)
                     except Exception:
                         pass
+                    try: self.log.emit("fire_one_shot: finished and signalled")
+                    except Exception: pass
                 finally:
                     self._one_shot_active = False
 

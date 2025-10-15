@@ -456,9 +456,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     self._per_shot_target = self._per_shot_current + int(self._per_shot_total or 1)
 
-                #queue first one-shot in the worker
+                # queue first one-shot in the worker
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                    try: self.status_panel.append_line(f"Per-shot start: current={self._per_shot_current}, total={self._per_shot_total}, target={getattr(self,'_per_shot_target',None)}")
+                    except Exception: pass
+                    try: self.status_panel.append_line("Queued first one-shot")
+                    except Exception: pass
                 except Exception:
                     try: self.status_panel.append_line('Failed to queue first one-shot')
                     except Exception: pass
