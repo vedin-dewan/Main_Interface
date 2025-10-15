@@ -535,6 +535,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
                 return
 
+            # Diagnostic: show which directory and tokens we're going to scan
+            try:
+                cams_dbg = [str(c.get('Name','')).strip() for c in getattr(self.device_tabs, '_cameras', []) if c.get('Name')]
+                specs_dbg = [str(s.get('filename','')).strip() for s in getattr(self.device_tabs, '_spectrometers', []) if s.get('filename')]
+                self.status_panel.append_line(f"Rename diagnostic: outdir='{outdir}', cams={cams_dbg}, specs={specs_dbg}")
+            except Exception:
+                pass
+
             # tokens to match: camera Names first (for label readability), then spectrometer filenames
             cams = [str(c.get('Name','')).strip() for c in getattr(self.device_tabs, '_cameras', []) if c.get('Name')]
             specs = [str(s.get('filename','')).strip() for s in getattr(self.device_tabs, '_spectrometers', []) if s.get('filename')]
@@ -561,6 +569,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 candidate = None
                 candidate_last_size = -1
                 stable_since = None
+                _first_no_candidate = True
 
                 # loop until we either accept a stable candidate or timeout
                 while time.time() < deadline:
@@ -586,7 +595,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                 newest_mtime = m
 
                     if newest is None:
-                        # no candidate yet; wait a bit and retry
+                        # no candidate yet; log a one-time diagnostic with sample filenames then wait and retry
+                        if _first_no_candidate:
+                            try:
+                                sample = entries[:6]
+                                self.status_panel.append_line(f"Rename: no files matching '{orig_tok}' yet (found {len(entries)} files). Examples: {', '.join(sample)}")
+                            except Exception:
+                                pass
+                            _first_no_candidate = False
                         try: QtWidgets.QApplication.processEvents()
                         except Exception: pass
                         time.sleep(poll_ms / 1000.0)
