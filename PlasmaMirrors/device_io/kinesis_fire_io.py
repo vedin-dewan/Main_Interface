@@ -92,7 +92,6 @@ class KinesisFireIO(QtCore.QObject):
         self._single_remaining: int = 0
         # one-shot state
         self._one_shot_active = False
-    # one-shot state complete
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
     @QtCore.pyqtSlot()
@@ -151,8 +150,6 @@ class KinesisFireIO(QtCore.QObject):
                 self.error.emit(f"NI-DAQ open failed: {e}")
                 self.out_task = None
                 self.in_task = None
-
-        # no diagnostic logging here
 
         # Poll timer (runs in this worker thread)
         self.timer = QtCore.QTimer(self)
@@ -287,15 +284,10 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
     def _write_outputs(self, shutter: int, cam: int, spec: int):
-        try:
-            vals = [bool(shutter), bool(cam), bool(spec)]
-        except Exception:
-            vals = [False, False, False]
-
         if self.out_task is None:
             return
         try:
-            self.out_task.write(vals)
+            self.out_task.write([bool(shutter), bool(cam), bool(spec)])
         except Exception as e:
             self.error.emit(f"NI-DAQ write failed: {e}")
 
