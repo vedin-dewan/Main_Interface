@@ -238,9 +238,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fire_panel.request_shots.connect(lambda n: setattr(self, '_last_shots_set_time', time.time()))
         except Exception:
             pass
-        # wire Reset Counter button
+        # wire Reset Counter button -> reset internal state and UI
         try:
-            self.fire_panel.request_reset.connect(lambda: self.fire_panel.disp_counter.setValue(0))
+            self.fire_panel.request_reset.connect(self._on_reset_counter)
         except Exception:
             pass
         # forward Fire to IO and also handle UI-side bookkeeping in MainWindow
@@ -423,48 +423,46 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 mode = 'continuous'
 
-            # Single-mode: set up rename watcher and start per-shot orchestration (one_shot calls)
+            # Single-mode: start a per-shot loop. The displayed counter is a cumulative tally
+            # that is never auto-reset; it increments only after each shot's rename completes.
             if mode == 'single':
-                # record time and metadata for later matching
-                try:
-                    self._rename_search_start = time.time()
-                    self._awaiting_rename = True
-                    self._rename_experiment = (self.overall_controls.exp_edit.text() or 'Experiment').strip()
-                    # take shot number as current display counter + 1 (best-effort)
-                    try:
-                        self._rename_shotnum = int(self.fire_panel.disp_counter.value()) + 1
-                    except Exception:
-                        self._rename_shotnum = 1
-                    self.status_panel.append_line(f"Armed rename watcher: experiment='{self._rename_experiment}', shot={self._rename_shotnum}")
-                except Exception:
-                    pass
+                # don't allow overlapping sequences
+                if getattr(self, '_per_shot_active', False):
+                    try: self.status_panel.append_line('Per-shot sequence already running; ignoring Fire')
+                    except Exception: pass
+                    return
 
-                # start per-shot orchestration: fire one shot at a time and wait for rename between shots
+                try:
+                    self._rename_experiment = (self.overall_controls.exp_edit.text() or 'Experiment').strip()
+                except Exception:
+                    self._rename_experiment = getattr(self, '_rename_experiment', 'Experiment')
+
                 try:
                     shots = int(self.fire_panel.spin_shots.value()) if getattr(self.fire_panel, 'spin_shots', None) else getattr(self.fire_io, '_num_shots', 1)
                 except Exception:
                     shots = getattr(self.fire_io, '_num_shots', 1)
 
-                # init per-shot counters and queue first shot
+                # initialize per-shot counters; start from the current displayed tally
                 self._per_shot_active = True
                 self._per_shot_total = max(1, int(shots))
-                # preserve the displayed counter value rather than resetting to zero
                 try:
                     self._per_shot_current = int(self.fire_panel.disp_counter.value())
                 except Exception:
                     self._per_shot_current = 0
-                # the worker will likely emit shots_progress(0, N) when arming; suppress responding to that once
-                self._suppress_next_zero_progress = True
+
+                # compute absolute target tally: stop when displayed counter reaches this value
+                try:
+                    self._per_shot_target = self._per_shot_current + int(self._per_shot_total)
+                except Exception:
+                    self._per_shot_target = self._per_shot_current + int(self._per_shot_total or 1)
+
+                # queue first one-shot in the worker
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
                 except Exception:
                     try: self.status_panel.append_line('Failed to queue first one-shot')
                     except Exception: pass
                     self._per_shot_active = False
-                else:
-                    # ensure the displayed counter keeps the preserved value (avoid transient resets)
-                    try: self.fire_panel.disp_counter.setValue(self._per_shot_current)
-                    except Exception: pass
                 return
 
             # Burst: forward to worker fire() which arms burst behavior
@@ -489,37 +487,12 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int, int)
     def _on_shots_progress(self, current: int, total: int):
         """Handle shots progress updates from the fire IO.
-        When a single-shot sequence completes and we were awaiting rename, perform renaming.
+        Note: shot tally UI is controlled exclusively by MainWindow and only changes after each
+        shot completes and its rename is done. We ignore worker shots_progress updates.
         """
+        # intentionally ignore shots_progress: UI tally is updated only after per-shot completion
         try:
-            # update UI counter if available
-            try:
-                # if the user just changed the # Shots, the worker will emit shots_progress(0, N).
-                # Ignore that automatic reset if it happened within 0.5s of the user's change so
-                # the counter doesn't reset unexpectedly.
-                last_set = getattr(self, '_last_shots_set_time', 0.0)
-                # suppress reset when user recently changed # Shots
-                if current == 0 and (time.time() - float(last_set) < 0.5):
-                    pass
-                # suppress the immediate 0 progress emitted when arming a per-shot sequence
-                elif current == 0 and getattr(self, '_suppress_next_zero_progress', False):
-                    # clear the flag and skip the reset
-                    try: self._suppress_next_zero_progress = False
-                    except Exception: pass
-                    pass
-                else:
-                    self.fire_panel.disp_counter.setValue(current)
-            except Exception:
-                pass
-            # if we were awaiting and the sequence completed, run rename
-            if getattr(self, '_awaiting_rename', False) and total and current >= total:
-                try:
-                    self._rename_output_files()
-                except Exception as e:
-                    try: self.status_panel.append_line(f"Rename step failed: {e}")
-                    except Exception: pass
-                finally:
-                    self._awaiting_rename = False
+            return
         except Exception:
             pass
 
@@ -529,6 +502,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fire_panel.disp_counter.setValue(0)
             self._per_shot_current = 0
             self._per_shot_active = False
+            try: self._per_shot_target = None
+            except Exception: pass
         except Exception:
             pass
 
@@ -556,7 +531,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 try: self.fire_panel.disp_counter.setValue(self._per_shot_current)
                 except Exception: pass
 
-                if self._per_shot_current < self._per_shot_total:
+                # continue until displayed counter reaches absolute target
+                target = getattr(self, '_per_shot_target', None)
+                if target is not None and self._per_shot_current < target:
                     # fire next shot in the worker thread via queued call to fire_one_shot
                     try:
                         QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
@@ -566,6 +543,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     # finished
                     self._per_shot_active = False
+                    try: self._per_shot_target = None
+                    except Exception: pass
                     try: self.status_panel.append_line("Per-shot sequence complete")
                     except Exception: pass
         except Exception:
