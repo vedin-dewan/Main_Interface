@@ -590,6 +590,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 stable_s=stable_time,
                 processed_paths=self._processed_output_files,
                 logger=getattr(self.status_panel, 'append_line', None),
+                write_info=True,
+                info_label='Info',
             )
             # keep processed set updated (function already mutates the set passed in)
             try:

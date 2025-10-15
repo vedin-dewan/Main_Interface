@@ -36,6 +36,8 @@ def rename_shot_files(
     processed_paths: Optional[Set[str]] = None,
     match_fn: Optional[Callable[[str, str], bool]] = None,
     logger: Optional[Callable[[str], None]] = None,
+    write_info: bool = False,
+    info_label: str = 'Info',
 ) -> Tuple[List[Tuple[str, str]], Set[str]]:
     """Poll `outdir` for files matching any of `tokens` and rename the newest stable file per token.
 
@@ -170,6 +172,35 @@ def rename_shot_files(
     if not renamed_pairs:
         try:
             logger("Rename step: completed with 0 files renamed.")
+        except Exception:
+            pass
+
+    # Optionally write an info file summarizing the shot and renamed files
+    if write_info:
+        try:
+            ts = datetime.now()
+            date_s = ts.strftime('%Y%m%d')
+            ms = int(ts.microsecond / 1000)
+            time_s = ts.strftime('%H%M%S') + f"{ms:03d}"
+            info_name = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_{info_label}.txt"
+            info_full = os.path.join(outdir, info_name)
+            try:
+                with open(info_full, 'w', encoding='utf-8') as fh:
+                    fh.write(f"Experiment: {exp}\n")
+                    fh.write(f"Shot: {shotnum}\n")
+                    fh.write(f"Timestamp: {ts.isoformat()}\n")
+                    fh.write("RenamedFiles:\n")
+                    for old, new in renamed_pairs:
+                        fh.write(f"{os.path.basename(old)} -> {os.path.basename(new)}\n")
+                try:
+                    logger(f"Wrote shot info file: {info_name}")
+                except Exception:
+                    pass
+            except Exception as e:
+                try:
+                    logger(f"Failed to write info file '{info_name}': {e}")
+                except Exception:
+                    pass
         except Exception:
             pass
 
