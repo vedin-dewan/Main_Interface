@@ -596,10 +596,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._processed_output_files.update(processed)
             except Exception:
                 pass
-            # report renamed files
-            for old, new in renamed:
-                try: self.status_panel.append_line(f"Renamed '{os.path.basename(old)}' → '{os.path.basename(new)}'")
-                except Exception: pass
         except Exception as e:
             try: self.status_panel.append_line(f"Rename exception: {e}")
             except Exception: pass
