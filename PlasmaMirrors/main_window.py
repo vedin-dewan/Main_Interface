@@ -16,6 +16,7 @@ import os
 import json
 import time
 from datetime import datetime
+from . import file_renamer
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
@@ -555,156 +556,37 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
     def _rename_output_files(self):
-        """Scan the output directory and rename exactly one newest, stable file per camera/spectrometer token.
-        Behavior:
-          - For each camera name and spectrometer filename token, pick the newest file in the output
-            directory whose name contains that token (case-insensitive) and which hasn't been processed.
-          - Wait until that candidate file's size is stable for a short window (to avoid renaming in-progress files).
-          - Rename the stable file to the ExperimentName_ShotNNNNN_YYYYMMDD_HHMMSSmmm_name_0.suffix format.
-          - Only one file per token is renamed. The function will poll/rescan until either a file is renamed
-            for a token or the timeout elapses.
-        """
+        # Delegate to file_renamer.rename_shot_files for maintainability and testability
         try:
             outdir = (self.overall_controls.dir_edit.text() or '').strip()
-            if not outdir or not os.path.isdir(outdir):
-                try: self.status_panel.append_line(f"Rename skipped: invalid output dir '{outdir}'")
-                except Exception: pass
-                return
-
-            # Diagnostic: show which directory and tokens we're going to scan
-            try:
-                cams_dbg = [str(c.get('Name','')).strip() for c in getattr(self.device_tabs, '_cameras', []) if c.get('Name')]
-                specs_dbg = [str(s.get('filename','')).strip() for s in getattr(self.device_tabs, '_spectrometers', []) if s.get('filename')]
-                self.status_panel.append_line(f"Rename diagnostic: outdir='{outdir}', cams={cams_dbg}, specs={specs_dbg}")
-            except Exception:
-                pass
-
-            # tokens to match: camera Names first (for label readability), then spectrometer filenames
             cams = [str(c.get('Name','')).strip() for c in getattr(self.device_tabs, '_cameras', []) if c.get('Name')]
             specs = [str(s.get('filename','')).strip() for s in getattr(self.device_tabs, '_spectrometers', []) if s.get('filename')]
             tokens = cams + specs
-            tokens_l = [t.lower() for t in tokens]
-
             shotnum = getattr(self, '_rename_shotnum', 1)
             exp = getattr(self, '_rename_experiment', 'Experiment')
+            max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)
+            poll_ms = getattr(self, '_rename_poll_ms', 200)
+            stable_time = getattr(self, '_rename_stable_time', 0.3)
 
-            # timing/stability policy (tunable via attributes)
-            max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)   # total wait budget (ms)
-            poll_ms = getattr(self, '_rename_poll_ms', 200)           # directory poll interval (ms)
-            stable_time = getattr(self, '_rename_stable_time', 0.3)   # seconds size must remain unchanged
-            deadline = time.time() + (max_wait_ms / 1000.0)
-
-            total_renamed = 0
-
-            # Track which tokens still need a file: use indices into tokens
-            remaining = {i for i, t in enumerate(tokens) if t}
-            # candidate path per token index
-            candidates = {}
-            # stability tracking per candidate path
-            last_size = {}
-            stable_since = {}
-
-            # Global polling loop: within the total wait budget, look for any token matches
-            while time.time() < deadline and remaining:
-                try:
-                    entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
-                except Exception:
-                    entries = []
-
-                now = time.time()
-
-                # attempt to find newest candidate for each remaining token
-                for idx in list(remaining):
-                    orig_tok = tokens[idx]
-                    token = tokens_l[idx]
-                    if not token:
-                        remaining.discard(idx)
-                        continue
-
-                    newest = None
-                    newest_mtime = 0
-                    for fname in entries:
-                        full = os.path.join(outdir, fname)
-                        if full in self._processed_output_files:
-                            continue
-                        if token in fname.lower():
-                            try:
-                                m = os.path.getmtime(full)
-                            except Exception:
-                                m = 0
-                            if newest is None or m > newest_mtime:
-                                newest = full
-                                newest_mtime = m
-
-                    if newest is None:
-                        # no candidate yet for this token
-                        continue
-
-                    # if candidate changed for this token, reset stability tracking
-                    prev = candidates.get(idx)
-                    if prev != newest:
-                        candidates[idx] = newest
-                        last_size[newest] = -1
-                        stable_since[newest] = None
-
-                    # check stability for the candidate path
-                    cand = candidates.get(idx)
-                    try:
-                        cur_size = os.path.getsize(cand)
-                    except Exception:
-                        cur_size = -1
-
-                    if cur_size == last_size.get(cand, -2) and cur_size >= 0:
-                        if stable_since.get(cand) is None:
-                            stable_since[cand] = now
-                        elif (now - stable_since[cand]) >= stable_time:
-                            # stable — rename now
-                            try:
-                                e = os.path.basename(cand)
-                                root, ext = os.path.splitext(e)
-                                ts = datetime.now()
-                                date_s = ts.strftime('%Y%m%d')
-                                ms = int(ts.microsecond / 1000)
-                                time_s = ts.strftime('%H%M%S') + f"{ms:03d}"
-                                label = orig_tok
-                                newname = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_{label}_0{ext}"
-                                newfull = os.path.join(outdir, newname)
-                                if os.path.exists(newfull):
-                                    try:
-                                        base, ex = os.path.splitext(newfull)
-                                        newfull = f"{base}_dup{ex}"
-                                    except Exception:
-                                        pass
-                                os.rename(cand, newfull)
-                                self._processed_output_files.add(newfull)
-                                total_renamed += 1
-                                try: self.status_panel.append_line(f"Renamed '{os.path.basename(cand)}' → '{os.path.basename(newfull)}'")
-                                except Exception: pass
-                            except Exception as e:
-                                try: self.status_panel.append_line(f"Failed to rename '{cand}': {e}")
-                                except Exception: pass
-                            # mark token done
-                            try:
-                                remaining.discard(idx)
-                            except Exception:
-                                pass
-                    else:
-                        # update last_size and reset stable timestamp
-                        last_size[cand] = cur_size
-                        stable_since[cand] = None
-
-                try: QtWidgets.QApplication.processEvents()
-                except Exception: pass
-                time.sleep(poll_ms / 1000.0)
-
-            # after timeout, report any tokens that weren't found/renamed
-            if remaining:
-                for idx in sorted(remaining):
-                    try: self.status_panel.append_line(f"Rename: no stable file found for '{tokens[idx]}' (or timed out).")
-                    except Exception: pass
-
-            if total_renamed == 0:
-                try: self.status_panel.append_line("Rename step: completed with 0 files renamed.")
+            renamed, processed = file_renamer.rename_shot_files(
+                outdir=outdir,
+                tokens=tokens,
+                shotnum=shotnum,
+                experiment=exp,
+                timeout_ms=max_wait_ms,
+                poll_ms=poll_ms,
+                stable_s=stable_time,
+                processed_paths=self._processed_output_files,
+                logger=getattr(self.status_panel, 'append_line', None),
+            )
+            # keep processed set updated (function already mutates the set passed in)
+            try:
+                self._processed_output_files.update(processed)
+            except Exception:
+                pass
+            # report renamed files
+            for old, new in renamed:
+                try: self.status_panel.append_line(f"Renamed '{os.path.basename(old)}' → '{os.path.basename(new)}'")
                 except Exception: pass
         except Exception as e:
             try: self.status_panel.append_line(f"Rename exception: {e}")
