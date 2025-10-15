@@ -456,7 +456,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     self._per_shot_target = self._per_shot_current + int(self._per_shot_total or 1)
 
-                # queue first one-shot in the worker
+                #queue first one-shot in the worker
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
                 except Exception:
@@ -465,7 +465,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._per_shot_active = False
                 return
 
-            # Burst: forward to worker fire() which arms burst behavior
+            #Burst: forward to worker fire() which arms burst behavior
             if mode == 'burst':
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire', QtCore.Qt.ConnectionType.QueuedConnection)
@@ -508,7 +508,7 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
     def _on_single_shot_done(self):
-        """Called when the fire worker signals that a single shot/pulse finished.
+        """Called when the fire worker signals that a single shot/pulse finished
         This runs in the UI thread because the worker emits the signal; perform rename then continue if per-shot active.
         """
         try:
@@ -585,32 +585,37 @@ class MainWindow(QtWidgets.QMainWindow):
             exp = getattr(self, '_rename_experiment', 'Experiment')
 
             # timing/stability policy (tunable via attributes)
-            max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)   # total wait budget per token (ms)
+            max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)   # total wait budget (ms)
             poll_ms = getattr(self, '_rename_poll_ms', 200)           # directory poll interval (ms)
             stable_time = getattr(self, '_rename_stable_time', 0.3)   # seconds size must remain unchanged
             deadline = time.time() + (max_wait_ms / 1000.0)
 
             total_renamed = 0
 
-            # Process tokens in order; rename up to one file per token
-            for idx, orig_tok in enumerate(tokens):
-                token = tokens_l[idx]
-                if not token:
-                    continue
+            # Track which tokens still need a file: use indices into tokens
+            remaining = {i for i, t in enumerate(tokens) if t}
+            # candidate path per token index
+            candidates = {}
+            # stability tracking per candidate path
+            last_size = {}
+            stable_since = {}
 
-                candidate = None
-                candidate_last_size = -1
-                stable_since = None
-                _first_no_candidate = True
+            # Global polling loop: within the total wait budget, look for any token matches
+            while time.time() < deadline and remaining:
+                try:
+                    entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
+                except Exception:
+                    entries = []
 
-                # loop until we either accept a stable candidate or timeout
-                token_deadline = time.time() + (max_wait_ms / 1000.0)
-                while time.time() < token_deadline:
-                    # rescan directory for newest candidate for this token
-                    try:
-                        entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
-                    except Exception:
-                        entries = []
+                now = time.time()
+
+                # attempt to find newest candidate for each remaining token
+                for idx in list(remaining):
+                    orig_tok = tokens[idx]
+                    token = tokens_l[idx]
+                    if not token:
+                        remaining.discard(idx)
+                        continue
 
                     newest = None
                     newest_mtime = 0
@@ -628,39 +633,30 @@ class MainWindow(QtWidgets.QMainWindow):
                                 newest_mtime = m
 
                     if newest is None:
-                        # no candidate yet; log a one-time diagnostic with sample filenames then wait and retry
-                        if _first_no_candidate:
-                            try:
-                                sample = entries[:6]
-                                self.status_panel.append_line(f"Rename: no files matching '{orig_tok}' yet (found {len(entries)} files). Examples: {', '.join(sample)}")
-                            except Exception:
-                                pass
-                            _first_no_candidate = False
-                        try: QtWidgets.QApplication.processEvents()
-                        except Exception: pass
-                        time.sleep(poll_ms / 1000.0)
+                        # no candidate yet for this token
                         continue
 
-                    # if candidate changed since last poll, reset stability tracking
-                    if candidate != newest:
-                        candidate = newest
-                        candidate_last_size = -1
-                        stable_since = None
+                    # if candidate changed for this token, reset stability tracking
+                    prev = candidates.get(idx)
+                    if prev != newest:
+                        candidates[idx] = newest
+                        last_size[newest] = -1
+                        stable_since[newest] = None
 
-                    # check size stability for the candidate
+                    # check stability for the candidate path
+                    cand = candidates.get(idx)
                     try:
-                        cur_size = os.path.getsize(candidate)
+                        cur_size = os.path.getsize(cand)
                     except Exception:
                         cur_size = -1
 
-                    now = time.time()
-                    if cur_size == candidate_last_size and cur_size >= 0:
-                        if stable_since is None:
-                            stable_since = now
-                        elif (now - stable_since) >= stable_time:
-                            # candidate is stable — perform rename
+                    if cur_size == last_size.get(cand, -2) and cur_size >= 0:
+                        if stable_since.get(cand) is None:
+                            stable_since[cand] = now
+                        elif (now - stable_since[cand]) >= stable_time:
+                            # stable — rename now
                             try:
-                                e = os.path.basename(candidate)
+                                e = os.path.basename(cand)
                                 root, ext = os.path.splitext(e)
                                 ts = datetime.now()
                                 date_s = ts.strftime('%Y%m%d')
@@ -675,27 +671,32 @@ class MainWindow(QtWidgets.QMainWindow):
                                         newfull = f"{base}_dup{ex}"
                                     except Exception:
                                         pass
-                                os.rename(candidate, newfull)
+                                os.rename(cand, newfull)
                                 self._processed_output_files.add(newfull)
                                 total_renamed += 1
-                                try: self.status_panel.append_line(f"Renamed '{os.path.basename(candidate)}' → '{os.path.basename(newfull)}'")
+                                try: self.status_panel.append_line(f"Renamed '{os.path.basename(cand)}' → '{os.path.basename(newfull)}'")
                                 except Exception: pass
                             except Exception as e:
-                                try: self.status_panel.append_line(f"Failed to rename '{candidate}': {e}")
+                                try: self.status_panel.append_line(f"Failed to rename '{cand}': {e}")
                                 except Exception: pass
-                            break
+                            # mark token done
+                            try:
+                                remaining.discard(idx)
+                            except Exception:
+                                pass
                     else:
-                        # size changed — restart stability timer
-                        candidate_last_size = cur_size
-                        stable_since = None
+                        # update last_size and reset stable timestamp
+                        last_size[cand] = cur_size
+                        stable_since[cand] = None
 
-                    try: QtWidgets.QApplication.processEvents()
-                    except Exception: pass
-                    time.sleep(poll_ms / 1000.0)
+                try: QtWidgets.QApplication.processEvents()
+                except Exception: pass
+                time.sleep(poll_ms / 1000.0)
 
-                # finished attempting this token (either renamed or timeout)
-                if total_renamed == 0:
-                    try: self.status_panel.append_line(f"Rename: no stable file found for '{orig_tok}' (or timed out).")
+            # after timeout, report any tokens that weren't found/renamed
+            if remaining:
+                for idx in sorted(remaining):
+                    try: self.status_panel.append_line(f"Rename: no stable file found for '{tokens[idx]}' (or timed out).")
                     except Exception: pass
 
             if total_renamed == 0:
