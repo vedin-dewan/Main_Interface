@@ -574,11 +574,19 @@ class MainWindow(QtWidgets.QMainWindow):
             # continue until displayed counter reaches absolute target
             target = getattr(self, '_per_shot_target', None)
             if target is not None and self._per_shot_current < target:
-                # fire next shot in the worker thread via queued call to fire_one_shot
+                # schedule the next shot after the configured Interval (ms) regardless of rename/save success
                 try:
-                    QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                    interval_ms = int(getattr(self, '_rename_max_wait_ms', 1000))
+                    def _queue_next():
+                        try:
+                            QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                        except Exception:
+                            try: self.status_panel.append_line("Failed to queue next one-shot")
+                            except Exception: pass
+                    # use QTimer.singleShot to wait interval_ms before firing next shot
+                    QtCore.QTimer.singleShot(interval_ms, _queue_next)
                 except Exception:
-                    try: self.status_panel.append_line("Failed to queue next one-shot")
+                    try: self.status_panel.append_line("Failed to schedule next one-shot")
                     except Exception: pass
             else:
                 # finished
