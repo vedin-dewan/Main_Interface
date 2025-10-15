@@ -436,8 +436,10 @@ class KinesisFireIO(QtCore.QObject):
     # -------- periodic poll --------
     @QtCore.pyqtSlot()
     def _tick(self):
-        # If a single sequence is running, let the sequencer own the outputs.
-        if self._in_single_sequence:
+        # If a single sequence or a one-shot is running, let that owner own the outputs.
+        # This prevents the periodic poll from immediately clearing outputs set by a
+        # one-shot pulse.
+        if self._in_single_sequence or getattr(self, '_one_shot_active', False):
             return
 
         val = self._read_trigger()
