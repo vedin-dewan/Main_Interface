@@ -231,6 +231,18 @@ class MainWindow(QtWidgets.QMainWindow):
         # Panel → IO
         self.fire_panel.request_mode.connect(self.fire_io.set_mode)
         self.fire_panel.request_shots.connect(self.fire_io.set_num_shots)
+        # record when the user changes the # Shots so we don't treat the resulting shots_progress(0,N)
+        # as a user-requested counter reset; store timestamp in seconds
+        try:
+            self._last_shots_set_time = 0.0
+            self.fire_panel.request_shots.connect(lambda n: setattr(self, '_last_shots_set_time', time.time()))
+        except Exception:
+            pass
+        # wire Reset Counter button
+        try:
+            self.fire_panel.request_reset.connect(lambda: self.fire_panel.disp_counter.setValue(0))
+        except Exception:
+            pass
         # forward Fire to IO and also handle UI-side bookkeeping in MainWindow
         # For per-shot control, hook request_fire to a MainWindow handler that
         # will orchestrate firing one shot at a time and wait for rename before next.
@@ -469,7 +481,15 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             # update UI counter if available
             try:
-                self.fire_panel.disp_counter.setValue(current)
+                # if the user just changed the # Shots, the worker will emit shots_progress(0, N).
+                # Ignore that automatic reset if it happened within 0.5s of the user's change so
+                # the counter doesn't reset unexpectedly.
+                last_set = getattr(self, '_last_shots_set_time', 0.0)
+                if current == 0 and (time.time() - float(last_set) < 0.5):
+                    # skip the automatic reset
+                    pass
+                else:
+                    self.fire_panel.disp_counter.setValue(current)
             except Exception:
                 pass
             # if we were awaiting and the sequence completed, run rename
@@ -484,6 +504,15 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
+    def _on_reset_counter(self):
+        """Reset shot counter and per-shot internal state on user request."""
+        try:
+            self.fire_panel.disp_counter.setValue(0)
+            self._per_shot_current = 0
+            self._per_shot_active = False
+        except Exception:
+            pass
+
     def _on_single_shot_done(self):
         """Called when the fire worker signals that a single shot/pulse finished.
         This runs in the UI thread because the worker emits the signal; perform rename then continue if per-shot active.
@@ -491,6 +520,11 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             # perform rename now (best-effort)
             try:
+                # set the current shot number used for naming (per-shot)
+                try:
+                    self._rename_shotnum = int(getattr(self, '_per_shot_current', 0)) + 1
+                except Exception:
+                    pass
                 self._rename_output_files()
             except Exception as e:
                 try: self.status_panel.append_line(f"Rename on-shot failed: {e}")
@@ -572,7 +606,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 _first_no_candidate = True
 
                 # loop until we either accept a stable candidate or timeout
-                while time.time() < deadline:
+                token_deadline = time.time() + (max_wait_ms / 1000.0)
+                while time.time() < token_deadline:
                     # rescan directory for newest candidate for this token
                     try:
                         entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]

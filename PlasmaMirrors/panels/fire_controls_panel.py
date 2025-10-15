@@ -6,6 +6,7 @@ class FireControlsPanel(QtWidgets.QWidget):
     # GUI -> backend
     request_mode  = QtCore.pyqtSignal(str)   # "continuous" | "single" | "burst"
     request_shots = QtCore.pyqtSignal(int)   # applies to both Single and Burst
+    request_reset = QtCore.pyqtSignal()      # reset shot counter on request
     request_fire  = QtCore.pyqtSignal()      # start action
 
     def __init__(self, parent=None):
@@ -72,6 +73,10 @@ class FireControlsPanel(QtWidgets.QWidget):
         counter_row = QtWidgets.QHBoxLayout()
         counter_row.addWidget(lab_counter)
         counter_row.addWidget(self.disp_counter)
+        # Reset button next to counter
+        self.btn_reset = QtWidgets.QPushButton("Reset")
+        self.btn_reset.setFixedWidth(70)
+        counter_row.addWidget(self.btn_reset)
         counter_row.addStretch(1)
         g.addLayout(counter_row, 2, 1, 1, 2)
 
@@ -102,6 +107,7 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.rb_burst.toggled.connect(lambda on: on and self._emit_mode("burst"))
         self.spin_shots.editingFinished.connect(self._emit_shots)
         self.btn_fire.clicked.connect(self.request_fire)
+        self.btn_reset.clicked.connect(lambda: self.request_reset.emit())
 
         # ensure initial visual state for the fire button (continuous by default)
         try:
