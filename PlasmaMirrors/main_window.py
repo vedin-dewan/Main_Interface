@@ -742,6 +742,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if 1 <= address <= len(self.part1.rows):
             row = self.part1.rows[address - 1]
             row.light_green.set_on(is_moving)
+        # If this address corresponds to any PM SD row, disable its bypass button while moving
+        try:
+            if hasattr(self, 'pm_panel') and self.pm_panel is not None:
+                try:
+                    # disable when moving, enable when not
+                    self.pm_panel.set_bypass_enabled_for_address(address, not bool(is_moving))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(int, float)
     def _on_moved(self, address: int, final_pos: float):

@@ -12,10 +12,22 @@ class ToggleBypassButton(QtWidgets.QPushButton):
         # Do not use automatic checkable toggle; we manage visual state programmatically
         self.setCheckable(False)
         self._engaged = False
+        self._enabled = True
         self._apply_style(self._engaged)
         self.setFixedHeight(26)
 
     def _apply_style(self, engaged: bool):
+        # Use the _enabled flag to render a disabled appearance when needed
+        try:
+            if not getattr(self, '_enabled', True):
+                # disabled look (greyed)
+                self.setText("BYPASS")
+                self.setStyleSheet(
+                    "background:#7f7f7f; color:#dddddd; border:1px solid #9f9f9f; font-weight:700; border-radius:6px;"
+                )
+                return
+        except Exception:
+            pass
         if engaged:
             # ENGAGE = red
             self.setText("ENGAGE")
@@ -35,6 +47,19 @@ class ToggleBypassButton(QtWidgets.QPushButton):
     def set_engaged(self, engaged: bool) -> None:
         try:
             self._engaged = bool(engaged)
+            self._apply_style(self._engaged)
+        except Exception:
+            pass
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Enable/disable the button and update its visual appearance.
+        When disabled the button is unclickable and shown greyed-out.
+        """
+        try:
+            self._enabled = bool(enabled)
+            # call QWidget.setEnabled so clicks are blocked
+            super().setEnabled(bool(enabled))
+            # refresh style to reflect enabled state
             self._apply_style(self._engaged)
         except Exception:
             pass
@@ -397,6 +422,21 @@ class PMPanel(QtWidgets.QWidget):
                         continue
         except Exception:
             return
+
+    def set_bypass_enabled_for_address(self, address: int, enabled: bool) -> None:
+        """If any PM mirror group's SD row maps to the given stage address,
+        enable or disable its bypass button accordingly.
+        """
+        try:
+            for idx, mg in enumerate((self.pm1, self.pm2, self.pm3), start=1):
+                try:
+                    sd_row = mg.row_sd
+                    if int(sd_row.stage_num.value()) == int(address):
+                        mg.bypass.set_enabled(bool(enabled))
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
     # --- Persistence helpers -------------------------------------------------
     def _mirror_group_to_dict(self, mg: 'PMMirrorGroup') -> dict:
