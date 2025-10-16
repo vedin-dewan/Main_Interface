@@ -788,6 +788,16 @@ class MainWindow(QtWidgets.QMainWindow):
         unit = getattr(row.info, 'unit')
         QtCore.QTimer.singleShot(50, lambda a=address: self.stage.read_position_speed(a, unit))
         self.status_panel.append_line(f"Home complete on Address {address} → reading back position…")
+        # After homing, the hardware will report a position; schedule a short delayed
+        # check to update the PM panel Act. indicator using the newly read position
+        # (the read_position_speed above will trigger _on_position which updates
+        # row.info.eng_value; wait a bit then read that value to drive the Act. light).
+        try:
+            QtCore.QTimer.singleShot(250, lambda a=address: (
+                None if not (hasattr(self, 'pm_panel') and hasattr(self, 'part1')) else self.pm_panel.set_act_indicator_by_address(a, float(self.part1.rows[a - 1].info.eng_value))
+            ))
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(int)
     def _on_request_home(self, address: int):
