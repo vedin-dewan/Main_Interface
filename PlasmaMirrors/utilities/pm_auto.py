@@ -67,6 +67,50 @@ class PMAutoManager:
                     except Exception:
                         current_y = 0.0
 
+                def _toggle_dir_widget(dir_widget):
+                    """Safely toggle a direction widget between Pos and Neg.
+
+                    Supports QComboBox-like widgets (setCurrentText / setCurrentIndex)
+                    and falls back to no-op if unsupported.
+                    Returns the new direction text (e.g. 'Pos' or 'Neg').
+                    """
+                    try:
+                        cur = str(dir_widget.currentText()).strip()
+                    except Exception:
+                        try:
+                            # maybe it's a QRadioButton group? try text attr
+                            cur = str(dir_widget.text()).strip()
+                        except Exception:
+                            return None
+                    new = 'Neg' if cur.lower().startswith('p') else 'Pos'
+                    try:
+                        if hasattr(dir_widget, 'setCurrentText'):
+                            dir_widget.setCurrentText(new)
+                        elif hasattr(dir_widget, 'setCurrentIndex') and hasattr(dir_widget, 'count'):
+                            # flip between 0 and 1 if possible
+                            try:
+                                idx = dir_widget.currentIndex()
+                                count = dir_widget.count()
+                                if count >= 2:
+                                    dir_widget.setCurrentIndex(1 - idx)
+                                else:
+                                    # fallback: try setting text via findText
+                                    t_idx = dir_widget.findText(new)
+                                    if t_idx >= 0:
+                                        dir_widget.setCurrentIndex(t_idx)
+                            except Exception:
+                                pass
+                        else:
+                            # try to set text attribute if available
+                            if hasattr(dir_widget, 'setText'):
+                                try:
+                                    dir_widget.setText(new)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                    return new
+
                 if target_type.startswith('c'):
                     # Circular: compute r using Zero Pos if present, otherwise fallback
                     try:
@@ -105,8 +149,70 @@ class PMAutoManager:
                         unit = getattr(self.part1_rows[rx_addr - 1].info, 'unit', unit)
                     except Exception:
                         pass
-                    log = f"PM Auto (Circular): moving RX stage {rx_addr} by {delta:.6f} {unit} (r={r:.3f}, zero_pos={zero_pos}, current_y={current_y:.3f}, dist={dist:.3f})"
-                    moves.append({'address': rx_addr, 'delta': float(delta), 'unit': unit, 'log': log})
+                    # Before emitting RX move, ensure it won't push RX out of its bounds.
+                    # Read current RX position and its min/max.
+                    try:
+                        rx_pos = None
+                        if rx_addr > 0 and hasattr(self, 'part1_rows') and len(self.part1_rows) >= rx_addr:
+                            try:
+                                rx_pos = float(self.part1_rows[rx_addr - 1].info.eng_value)
+                            except Exception:
+                                rx_pos = None
+                        if rx_pos is None:
+                            try:
+                                rx_pos = float(mg.row_rx.get_current())
+                            except Exception:
+                                rx_pos = None
+                    except Exception:
+                        rx_pos = None
+
+                    rx_min = rx_max = None
+                    try:
+                        rx_min = float(mg.row_rx.min.value())
+                    except Exception:
+                        rx_min = None
+                    try:
+                        rx_max = float(mg.row_rx.max.value())
+                    except Exception:
+                        rx_max = None
+
+                    intended_rx = None if rx_pos is None else (rx_pos + delta)
+                    out_of_bounds_rx = False
+                    if intended_rx is not None:
+                        if rx_min is not None and intended_rx < rx_min - 1e-6:
+                            out_of_bounds_rx = True
+                        if rx_max is not None and intended_rx > rx_max + 1e-6:
+                            out_of_bounds_rx = True
+
+                    if out_of_bounds_rx:
+                        # Swap: move Y by +/-dist (mm) instead, and reverse RX direction
+                        # determine Y address
+                        try:
+                            y_addr = int(mg.row_y.stage_num.value())
+                        except Exception:
+                            y_addr = 0
+                        if y_addr <= 0:
+                            self._log(f"PM Auto (Circular): RX out-of-bounds but Y stage invalid for swap; skipping")
+                            continue
+                        # Use Y.dir for sign
+                        y_dir = str(mg.row_y.dir.currentText()) if getattr(mg.row_y, 'dir', None) is not None else 'Pos'
+                        y_delta = dist if y_dir.lower().startswith('p') else -abs(dist)
+                        unit_y = 'mm'
+                        try:
+                            unit_y = getattr(self.part1_rows[y_addr - 1].info, 'unit', unit_y)
+                        except Exception:
+                            pass
+                        log = (f"PM Auto (Circular swap): RX intended {intended_rx:.6f} {unit} out-of-bounds; "
+                               f"moving Y stage {y_addr} by {y_delta:.6f} {unit_y} instead and reversing RX direction")
+                        # reverse RX direction in the UI
+                        try:
+                            _toggle_dir_widget(mg.row_rx.dir)
+                        except Exception:
+                            pass
+                        moves.append({'address': y_addr, 'delta': float(y_delta), 'unit': unit_y, 'log': log})
+                    else:
+                        log = f"PM Auto (Circular): moving RX stage {rx_addr} by {delta:.6f} {unit} (r={r:.3f}, zero_pos={zero_pos}, current_y={current_y:.3f}, dist={dist:.3f})"
+                        moves.append({'address': rx_addr, 'delta': float(delta), 'unit': unit, 'log': log})
                 else:
                     # Linear/Rectangular: move Y by dist using Y.dir
                     try:
@@ -117,14 +223,75 @@ class PMAutoManager:
                         self._log(f"PM Auto: group has invalid Y stage_num {y_addr}; skipping")
                         continue
                     dir_choice = str(mg.row_y.dir.currentText()) if getattr(mg.row_y, 'dir', None) is not None else 'Pos'
-                    delta = dist if dir_choice.lower().startswith('p') else -abs(dist)
+                    y_delta = dist if dir_choice.lower().startswith('p') else -abs(dist)
                     unit = 'mm'
                     try:
                         unit = getattr(self.part1_rows[y_addr - 1].info, 'unit', unit)
                     except Exception:
                         pass
-                    log = f"PM Auto: moving stage {y_addr} by {delta:.6f} {unit}"
-                    moves.append({'address': y_addr, 'delta': float(delta), 'unit': unit, 'log': log})
+
+                    # Check whether the intended Y move would violate Y bounds. If so,
+                    # swap to moving RX by +/-dist (mm) and reverse Y direction.
+                    try:
+                        y_pos = None
+                        if y_addr > 0 and hasattr(self, 'part1_rows') and len(self.part1_rows) >= y_addr:
+                            try:
+                                y_pos = float(self.part1_rows[y_addr - 1].info.eng_value)
+                            except Exception:
+                                y_pos = None
+                        if y_pos is None:
+                            try:
+                                y_pos = float(mg.row_y.get_current())
+                            except Exception:
+                                y_pos = None
+                    except Exception:
+                        y_pos = None
+
+                    y_min = y_max = None
+                    try:
+                        y_min = float(mg.row_y.min.value())
+                    except Exception:
+                        y_min = None
+                    try:
+                        y_max = float(mg.row_y.max.value())
+                    except Exception:
+                        y_max = None
+
+                    intended_y = None if y_pos is None else (y_pos + y_delta)
+                    out_of_bounds_y = False
+                    if intended_y is not None:
+                        if y_min is not None and intended_y < y_min - 1e-6:
+                            out_of_bounds_y = True
+                        if y_max is not None and intended_y > y_max + 1e-6:
+                            out_of_bounds_y = True
+
+                    if out_of_bounds_y:
+                        # Swap: move RX by +/-dist (mm) instead, and reverse Y direction
+                        try:
+                            rx_addr = int(mg.row_rx.stage_num.value())
+                        except Exception:
+                            rx_addr = 0
+                        if rx_addr <= 0:
+                            self._log(f"PM Auto (Linear): Y out-of-bounds but RX stage invalid for swap; skipping")
+                            continue
+                        rx_dir = str(mg.row_rx.dir.currentText()) if getattr(mg.row_rx, 'dir', None) is not None else 'Pos'
+                        rx_delta = dist if rx_dir.lower().startswith('p') else -abs(dist)
+                        unit_rx = 'mm'
+                        try:
+                            unit_rx = getattr(self.part1_rows[rx_addr - 1].info, 'unit', unit_rx)
+                        except Exception:
+                            pass
+                        log = (f"PM Auto (Linear swap): Y intended {intended_y:.6f} {unit} out-of-bounds; "
+                               f"moving RX stage {rx_addr} by {rx_delta:.6f} {unit_rx} instead and reversing Y direction")
+                        # reverse Y direction in the UI
+                        try:
+                            _toggle_dir_widget(mg.row_y.dir)
+                        except Exception:
+                            pass
+                        moves.append({'address': rx_addr, 'delta': float(rx_delta), 'unit': unit_rx, 'log': log})
+                    else:
+                        log = f"PM Auto: moving stage {y_addr} by {y_delta:.6f} {unit}"
+                        moves.append({'address': y_addr, 'delta': float(y_delta), 'unit': unit, 'log': log})
             except Exception:
                 continue
 
