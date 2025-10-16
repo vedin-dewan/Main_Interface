@@ -107,6 +107,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.part2 = StageControlPanel(self.part1.rows)
         self.status_panel = StatusPanel()
         self.placeholder_panel = PlaceholderPanel("Placeholder")
+        # track background write + auto-move state so we can control Fire button
+        self._info_write_pending = False
+        self._pending_auto_addresses = set()
 
         # --- Info writer thread (background) ---
         try:
@@ -489,6 +492,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 # queue first one-shot in the worker
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                    # disable Fire button while the shot and its post-processing runs
+                    try:
+                        self._set_fire_button_enabled(False)
+                    except Exception:
+                        pass
                     try: self.status_panel.append_line(f"Per-shot start: current={self._per_shot_current}, total={self._per_shot_total}, target={getattr(self,'_per_shot_target',None)}")
                     except Exception: pass
                     try: self.status_panel.append_line("Queued first one-shot")
@@ -661,6 +669,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     'event_ts': event_ts,
                 }
 
+                # mark info write pending so Fire stays disabled until post-processing completes
+                try:
+                    self._info_write_pending = True
+                    self._pending_auto_addresses.clear()
+                    self._set_fire_button_enabled(False)
+                except Exception:
+                    pass
                 if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info_and_shot_log', None) is not None:
                     try:
                         QtCore.QMetaObject.invokeMethod(self._info_writer, 'write_info_and_shot_log', QtCore.Qt.ConnectionType.QueuedConnection,
@@ -677,6 +692,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         tmp = InfoWriter()
                         tmp.write_info_and_shot_log(payload)
+                        # if synchronous, emulate write_complete behavior so autos run
+                        try:
+                            self._on_info_written(dict(payload or {}))
+                        except Exception:
+                            pass
                     except Exception as e:
                         try: self.status_panel.append_line(f"Failed to write shot info (fallback): {e}")
                         except Exception: pass
@@ -786,6 +806,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
                 return
             # For each PM mirror group, check auto and compute the Y stage delta
+            auto_addresses = set()
             for mg in (self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3):
                 try:
                     if not getattr(mg, 'auto', None) or not mg.auto.isChecked():
@@ -814,9 +835,25 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.status_panel.append_line(f"PM Auto: moving stage {stage_num} by {delta:.6f} {unit}")
                     except Exception:
                         pass
+                    auto_addresses.add(stage_num)
                     QtCore.QTimer.singleShot(0, lambda a=stage_num, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
                 except Exception:
                     continue
+            # mark pending auto addresses and keep Fire disabled until they finish
+            try:
+                self._pending_auto_addresses.update(auto_addresses)
+            except Exception:
+                pass
+            try:
+                self._info_write_pending = False
+            except Exception:
+                pass
+            # If no autos are pending, we can re-enable Fire now
+            try:
+                if not self._pending_auto_addresses and not self._info_write_pending:
+                    self._set_fire_button_enabled(True)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -850,6 +887,44 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.status_panel.append_line(f"PM{pm_index} bypass visual updated after move → {'ENGAGE' if new_state else 'BYPASS'}")
                 except Exception:
                     pass
+        except Exception:
+            pass
+        # if this address was a pending auto move, clear and possibly re-enable Fire
+        try:
+            if int(address) in getattr(self, '_pending_auto_addresses', set()):
+                try:
+                    self._pending_auto_addresses.discard(int(address))
+                except Exception:
+                    pass
+                try:
+                    if not self._pending_auto_addresses and not getattr(self, '_info_write_pending', False):
+                        self._set_fire_button_enabled(True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _set_fire_button_enabled(self, enabled: bool) -> None:
+        """Helper to enable/disable the GUI Fire button on the FireControlsPanel.
+        Respects the FireControlsPanel internal mode rules (button disabled in continuous mode).
+        """
+        try:
+            # Fire button should only be enabled if panel mode permits it (single/burst)
+            if not getattr(self, 'fire_panel', None):
+                return
+            # Use the panel's _update_fire_button_state logic but override enabled state
+            try:
+                # If the panel mode doesn't allow firing, keep it disabled regardless
+                mode = getattr(self.fire_panel, '_current_mode', 'continuous')
+                allowed = (mode in ('single', 'burst'))
+                self.fire_panel.btn_fire.setEnabled(bool(enabled) and allowed)
+                # reflect faded or active appearance
+                if bool(enabled) and allowed:
+                    self.fire_panel.btn_fire.setStyleSheet("background:#D30000; color:white; font-weight:700;")
+                else:
+                    self.fire_panel.btn_fire.setStyleSheet("background:#444444; color:#9a9a9a; font-weight:600;")
+            except Exception:
+                pass
         except Exception:
             pass
 
