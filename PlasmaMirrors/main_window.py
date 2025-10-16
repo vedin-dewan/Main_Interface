@@ -471,9 +471,46 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 mode = 'continuous'
 
-            # Before any firing action, if any PM Auto is enabled, perform bounds check and prompt user
+            # Pre-fire checks: output dir & experiment name for single or burst modes
             try:
-                if getattr(self, '_pm_auto', None) is not None:
+                if mode in ('single', 'burst'):
+                    outdir = (self.overall_controls.dir_edit.text() or '').strip() if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'dir_edit', None) else ''
+                    exp_name = (self.overall_controls.exp_edit.text() or '').strip() if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'exp_edit', None) else ''
+                    bads = []
+                    import os as _os
+                    if not outdir:
+                        bads.append('Output directory is empty')
+                    else:
+                        try:
+                            if not _os.path.isdir(outdir):
+                                bads.append(f'Output directory does not exist or is not a directory: {outdir}')
+                        except Exception:
+                            bads.append(f'Invalid output directory: {outdir}')
+                    if not exp_name:
+                        bads.append('Experiment name is empty')
+                    if bads:
+                        from PyQt6.QtWidgets import QMessageBox
+                        mb = QMessageBox(self)
+                        mb.setIcon(QMessageBox.Icon.Warning)
+                        mb.setWindowTitle('Pre-fire validation')
+                        mb.setText('Pre-fire checks failed:')
+                        mb.setInformativeText('\n'.join(bads) + '\n\nDo you want to continue firing?')
+                        mb.setStandardButtons(QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes)
+                        mb.setDefaultButton(QMessageBox.StandardButton.Cancel)
+                        resp = mb.exec()
+                        if resp == QMessageBox.StandardButton.Cancel:
+                            try: self.status_panel.append_line('Firing cancelled by user due to pre-fire validation failure')
+                            except Exception: pass
+                            return
+                        else:
+                            try: self.status_panel.append_line('User chose to continue despite pre-fire validation warnings')
+                            except Exception: pass
+            except Exception:
+                pass
+
+            # PM Auto bounds check only for single-shot mode (performed at click time before any queuing)
+            try:
+                if mode == 'single' and getattr(self, '_pm_auto', None) is not None:
                     try:
                         violations = self._pm_auto.check_bounds()
                     except Exception:
