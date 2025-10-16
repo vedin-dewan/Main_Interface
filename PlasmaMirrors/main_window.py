@@ -772,9 +772,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.status_panel.append_line(f"InfoWriter completed for shot {sn}")
             except Exception:
                 pass
-            # Only perform Auto behavior when in a per-shot sequence (single-shot mode)
-            if not getattr(self, '_per_shot_active', False):
-                try: self.status_panel.append_line("PM Auto: skipping because per-shot sequence not active")
+            # Only perform Auto behavior when in a per-shot sequence (single-shot mode).
+            # Allow if either the per-shot orchestration is active or the Fire panel's
+            # Single mode radio is currently selected (covers the case where the
+            # per-shot flag was cleared before the background writer finished).
+            single_mode_ui = False
+            try:
+                single_mode_ui = bool(getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'rb_single', None) and self.fire_panel.rb_single.isChecked())
+            except Exception:
+                single_mode_ui = False
+            if not (getattr(self, '_per_shot_active', False) or single_mode_ui):
+                try: self.status_panel.append_line("PM Auto: skipping because not in single-shot mode")
                 except Exception: pass
                 return
             # For each PM mirror group, check auto and compute the Y stage delta
