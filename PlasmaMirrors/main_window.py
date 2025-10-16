@@ -439,6 +439,30 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.part2.refresh_rows(self.part1.rows)
                 except Exception:
                     pass
+                # After rebuilding the motor rows, request fresh position/speed/bounds
+                # reads for each configured stage so the UI displays real values
+                try:
+                    for addr, row in enumerate(self.part1.rows, start=1):
+                        try:
+                            unit = getattr(row.info, 'unit', 'mm') or 'mm'
+                        except Exception:
+                            unit = 'mm'
+                        # schedule immediate read and speed request
+                        try:
+                            QtCore.QTimer.singleShot(0, lambda a=addr, u=unit: self.req_read.emit(a, u))
+                        except Exception:
+                            pass
+                        try:
+                            QtCore.QTimer.singleShot(0, lambda a=addr, u=unit: self.req_spd.emit(a, u))
+                        except Exception:
+                            pass
+                        # request bounds shortly after to update limits
+                        try:
+                            QtCore.QTimer.singleShot(50, lambda a=addr, u=unit: self.req_bounds.emit(a, u))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 # Rebind stop button handlers (remove old connections first)
                 try:
                     for addr, row in enumerate(self.part1.rows, start=1):

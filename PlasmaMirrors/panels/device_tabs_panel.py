@@ -542,40 +542,115 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             return
         s = self._stages[idx]
         try:
+            # read the new value from the appropriate widget
             if key == 'name':
-                s['name'] = self.name_edit.text()
+                new_val = self.name_edit.text()
             elif key == 'model_number':
-                s['model_number'] = self.model_edit.text()
+                new_val = self.model_edit.text()
             elif key == 'type':
-                s['type'] = self.type_combo.currentText()
+                new_val = self.type_combo.currentText()
             elif key == 'num':
-                # spinbox is int
-                s['num'] = int(self.num_spin.value())
+                try:
+                    new_val = int(self.num_spin.value())
+                except Exception:
+                    new_val = self.num_spin.value()
             elif key == 'Abr':
-                s['Abr'] = self.abr_edit.text()
+                new_val = self.abr_edit.text()
             elif key == 'description':
-                s['description'] = self.desc_edit.toPlainText()
+                new_val = self.desc_edit.toPlainText()
             elif key == 'com':
-                s['com'] = self.com_combo.currentText()
-            # refresh visible list label if name changed
+                new_val = self.com_combo.currentText()
+            elif key == 'baud':
+                new_val = self.baud_combo.currentText()
+            else:
+                # unknown key: no-op
+                return
+
+            old_val = s.get(key, '')
+            # if nothing changed, do nothing
+            if str(new_val) == str(old_val):
+                return
+
+            # Confirmation dialog
             try:
-                self.stage_list.item(idx).setText(s.get('name',''))
+                mb = QtWidgets.QMessageBox(self)
+                mb.setIcon(QtWidgets.QMessageBox.Icon.Question)
+                mb.setWindowTitle('Confirm stage edit')
+                mb.setText(f"Change '{key}' for stage '{s.get('name','')}'?")
+                mb.setInformativeText(f"Old: {old_val}\nNew: {new_val}\n\nSave change?")
+                mb.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Cancel | QtWidgets.QMessageBox.StandardButton.Yes)
+                mb.setDefaultButton(QtWidgets.QMessageBox.StandardButton.Yes)
+                resp = mb.exec()
+            except Exception:
+                resp = QtWidgets.QMessageBox.StandardButton.Yes
+
+            if resp == QtWidgets.QMessageBox.StandardButton.Cancel:
+                # revert widget to old value without emitting signals
+                try:
+                    if key == 'name':
+                        self.name_edit.blockSignals(True)
+                        self.name_edit.setText(str(old_val))
+                        self.name_edit.blockSignals(False)
+                        try: self.stage_list.item(idx).setText(str(old_val))
+                        except Exception: pass
+                    elif key == 'model_number':
+                        self.model_edit.blockSignals(True)
+                        self.model_edit.setText(str(old_val))
+                        self.model_edit.blockSignals(False)
+                    elif key == 'type':
+                        self.type_combo.blockSignals(True)
+                        self.type_combo.setCurrentText(str(old_val))
+                        self.type_combo.blockSignals(False)
+                    elif key == 'num':
+                        self.num_spin.blockSignals(True)
+                        try: self.num_spin.setValue(int(old_val))
+                        except Exception: pass
+                        self.num_spin.blockSignals(False)
+                    elif key == 'Abr':
+                        self.abr_edit.blockSignals(True)
+                        self.abr_edit.setText(str(old_val))
+                        self.abr_edit.blockSignals(False)
+                    elif key == 'description':
+                        self.desc_edit.blockSignals(True)
+                        self.desc_edit.setPlainText(str(old_val))
+                        self.desc_edit.blockSignals(False)
+                    elif key == 'com':
+                        self.com_combo.blockSignals(True)
+                        self.com_combo.setCurrentText(str(old_val))
+                        self.com_combo.blockSignals(False)
+                    elif key == 'baud':
+                        self.baud_combo.blockSignals(True)
+                        self.baud_combo.setCurrentText(str(old_val))
+                        self.baud_combo.blockSignals(False)
+                except Exception:
+                    pass
+                return
+
+            # commit change
+            try:
+                s[key] = new_val
             except Exception:
                 pass
+
+            # refresh visible list label if name changed
+            try:
+                if key == 'name':
+                    try: self.stage_list.item(idx).setText(s.get('name',''))
+                    except Exception: pass
+            except Exception:
+                pass
+
             # after edits, make sure stages are kept sorted by num in memory and on-disk
             try:
                 self._stages = sorted(self._stages, key=lambda x: int(x.get('num', 0)))
             except Exception:
                 pass
-            # Only emit a full stages_changed notification when the stage
-            # name or its numeric 'num' changes. Other edits persist to disk
-            # but should not trigger the MainWindow to rebuild the MotorStatusPanel.
+
+            # persist: emit only for name/num; otherwise persist silently
             try:
                 if key in ('name', 'num'):
-                    # normal save + emit
                     self._save_stages()
                 else:
-                    # persist but suppress the stages_changed emit
                     try:
                         self._suppress_emit = True
                         self._save_stages()
