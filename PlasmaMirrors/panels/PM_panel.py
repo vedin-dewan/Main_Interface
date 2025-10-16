@@ -231,6 +231,19 @@ class PMPanel(QtWidgets.QWidget):
         except Exception:
             pass
 
+        # Immediately update Act. indicator when SD min/max are edited by the user
+        try:
+            for mg in (self.pm1, self.pm2, self.pm3):
+                try:
+                    sd = mg.row_sd
+                    # When SD's min or max changes, check current SD displayed value and update Act.
+                    sd.min.valueChanged.connect(lambda _val, sd=sd, self_ref=self: self_ref.set_act_indicator_by_address(int(sd.stage_num.value()), sd.get_current()))
+                    sd.max.valueChanged.connect(lambda _val, sd=sd, self_ref=self: self_ref.set_act_indicator_by_address(int(sd.stage_num.value()), sd.get_current()))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # Match app style
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setMinimumWidth(520)
@@ -377,6 +390,7 @@ class PMPanel(QtWidgets.QWidget):
                 for r in (mg.row_rx, mg.row_y, mg.row_z, mg.row_sd):
                     try:
                         if int(r.stage_num.value()) == int(address):
+                            # update the numeric display; do not change Act. indicator here
                             r.set_current(float(value))
                             return
                     except Exception:
@@ -501,3 +515,62 @@ class PMPanel(QtWidgets.QWidget):
             if logger:
                 try: logger(f"PM settings load failed: {e}")
                 except Exception: pass
+        def set_act_indicator_by_address(self, address: int, final_pos: float) -> None:
+            """Update the Act. indicator for the PM mirror whose SD row matches `address`.
+            This should be called when a move completes so the indicator only changes on move completion.
+            The indicator is ON only when the SD current value equals the SD Max (within tolerance); otherwise OFF.
+            """
+            try:
+                tol = 1e-3
+                for idx, mg in enumerate((self.pm1, self.pm2, self.pm3), start=1):
+                    try:
+                        sd = mg.row_sd
+                        if int(sd.stage_num.value()) == int(address):
+                            try:
+                                max_v = float(sd.max.value())
+                            except Exception:
+                                max_v = None
+                            try:
+                                min_v = float(sd.min.value())
+                            except Exception:
+                                min_v = None
+                            val = float(final_pos)
+                            if max_v is not None and abs(val - max_v) <= tol:
+                                try: mg.act_light.set_on(True)
+                                except Exception: pass
+                            else:
+                                try: mg.act_light.set_on(False)
+                                except Exception: pass
+                            return
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        def set_bypass_enabled_for_address(self, address: int, enabled: bool) -> None:
+            """Enable or disable the BYPASS/ENGAGE button for the PM whose SD row matches `address`.
+            When disabled, the button is made unclickable and given a greyed-out appearance.
+            """
+            try:
+                for mg in (self.pm1, self.pm2, self.pm3):
+                    try:
+                        sd = mg.row_sd
+                        if int(sd.stage_num.value()) == int(address):
+                            try:
+                                mg.bypass.setEnabled(bool(enabled))
+                            except Exception:
+                                pass
+                            # Apply a greyed-out style when disabled because the widget uses custom styles.
+                            try:
+                                if not bool(enabled):
+                                    mg.bypass.setStyleSheet("background:#6e6e6e; color:#fff; border:1px solid #8f8f8f; font-weight:700; border-radius:6px;")
+                                else:
+                                    # restore visual based on engaged state
+                                    mg.bypass._apply_style(mg.bypass._engaged)
+                            except Exception:
+                                pass
+                            return
+                    except Exception:
+                        continue
+            except Exception:
+                pass

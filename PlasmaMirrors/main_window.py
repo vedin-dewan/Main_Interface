@@ -741,6 +741,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if 1 <= address <= len(self.part1.rows):
             row = self.part1.rows[address - 1]
             row.light_green.set_on(is_moving)
+        # Disable the corresponding PM bypass button while its SD stage is moving
+        try:
+            if hasattr(self, 'pm_panel') and self.pm_panel is not None:
+                try:
+                    # call panel helper to enable/disable bypass for this stage's match
+                    self.pm_panel.set_bypass_enabled_for_address(address, not bool(is_moving))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(int, float)
     def _on_moved(self, address: int, final_pos: float):
@@ -751,6 +761,15 @@ class MainWindow(QtWidgets.QMainWindow):
             f"Move complete on Address {address}: {final_pos:.{prec}f} {unit} (reading back...)"
         )
         self.req_read.emit(address, unit)
+        # Update PM panel Act. indicator only when a move completes
+        try:
+            if hasattr(self, 'pm_panel') and self.pm_panel is not None:
+                try:
+                    self.pm_panel.set_act_indicator_by_address(address, final_pos)
+                except Exception:
+                    pass
+        except Exception:
+            pass
         # if this address was a pending bypass move, flip the bypass button visual for that PM
         try:
             pm_index = self._pending_bypass_moves.pop(int(address), None)
