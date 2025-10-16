@@ -915,11 +915,11 @@ class MainWindow(QtWidgets.QMainWindow):
                             try: self.status_panel.append_line(f"PM Auto: group has invalid RX stage_num {rx_stage_num}; skipping Circular auto")
                             except Exception: pass
                             continue
-                        # get Y max
+                        # read Zero Pos for Y (preferred source for r) and the current Y position
                         try:
-                            y_max = float(mg.row_y.max.value())
+                            zero_pos = float(mg.row_y.get_zero())
                         except Exception:
-                            y_max = 0.0
+                            zero_pos = None
                         # read the current Y position from part1 if possible (preferred), otherwise fall back to the UI label
                         current_y = None
                         try:
@@ -937,9 +937,21 @@ class MainWindow(QtWidgets.QMainWindow):
                                 current_y = float(mg.row_y.get_current())
                             except Exception:
                                 current_y = 0.0
-                        r = (y_max - float(current_y) + 4.25)
+                        if zero_pos is None:
+                            # fallback: if Zero Pos is not defined, try to use Y max + 4.25 as previous behavior
+                            try:
+                                y_max = float(mg.row_y.max.value())
+                            except Exception:
+                                y_max = 0.0
+                            r = (y_max - float(current_y) + 4.25)
+                            try:
+                                self.status_panel.append_line(f"PM Auto (Circular): Zero Pos missing, falling back to (Y.max - current_y + 4.25) => r={r:.3f}")
+                            except Exception:
+                                pass
+                        else:
+                            r = (float(zero_pos) - float(current_y))
                         if abs(r) < 1e-6:
-                            try: self.status_panel.append_line(f"PM Auto: computed r is zero for Circular target (Y max={y_max}, current={current_y}); skipping")
+                            try: self.status_panel.append_line(f"PM Auto: computed r is zero for Circular target (zero_pos={zero_pos}, current={current_y}); skipping")
                             except Exception: pass
                             continue
                         # angle in degrees
@@ -952,7 +964,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         except Exception:
                             unit = 'deg'
                         try:
-                            self.status_panel.append_line(f"PM Auto (Circular): moving RX stage {rx_stage_num} by {delta:.6f} {unit} (r={r:.3f}, y_max={y_max:.3f}, current_y={current_y:.3f}, dist={dist:.3f})")
+                            self.status_panel.append_line(f"PM Auto (Circular): moving RX stage {rx_stage_num} by {delta:.6f} {unit} (r={r:.3f}, zero_pos={zero_pos}, current_y={current_y:.3f}, dist={dist:.3f})")
                         except Exception:
                             pass
                         auto_addresses.add(rx_stage_num)
