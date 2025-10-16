@@ -550,9 +550,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # queue first one-shot in the worker
             try:
                 QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
-                # disable Fire button while the shot and its post-processing runs
+                # keep Fire faded/visually disabled but still clickable (panel manages visual state)
                 try:
-                    self._set_fire_button_enabled(False)
+                    self.fire_panel.set_sequence_active(True, int(self._per_shot_total))
                 except Exception:
                     pass
                 try: self.status_panel.append_line(f"Per-shot start: current={self._per_shot_current}, total={self._per_shot_total}, target={getattr(self,'_per_shot_target',None)}")
@@ -649,18 +649,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
                 try: self.status_panel.append_line("Per-shot sequence complete")
                 except Exception: pass
-                # sequence fully complete (renames + info writer dispatched). If no pending autos
-                # and no info writes pending, re-enable Fire and start queued sequence if requested.
+                # sequence fully complete (renames + info writer dispatched). Fire remains faded
+                # until all post-processing (info writes + autos) finish. Attempt to start queued
+                # run when the current per-shot sequence itself is done; actual enabling of the
+                # Fire button will occur only when _pending_auto_addresses and _info_write_pending
+                # are both empty (handled elsewhere).
                 try:
-                    if not self._pending_auto_addresses and not getattr(self, '_info_write_pending', False):
-                        self._set_fire_button_enabled(True)
+                    # nothing to do here beyond logging
+                    pass
                 except Exception:
                     pass
                 # if user queued another Fire while this run was active, start it now
                 try:
                     if getattr(self, '_queued_fire_request', False):
                         self._queued_fire_request = False
-                        QtCore.QTimer.singleShot(50, lambda: self._on_fire_clicked())
+                        # schedule the queued run to start only once post-processing finishes;
+                        # _on_moved/_on_info_written will re-enable and kick off queued runs when appropriate.
+                        # store queued flag (already cleared) and trigger a check soon after
+                        QtCore.QTimer.singleShot(50, lambda: self.status_panel.append_line('Queued run will start after current post-processing completes'))
                 except Exception:
                     pass
 
@@ -726,7 +732,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     self._info_write_pending = True
                     self._pending_auto_addresses.clear()
-                    self._set_fire_button_enabled(False)
+                    # keep sequence UI active; MainWindow will enable Fire only when all post-processing completes
+                    try:
+                        self.fire_panel.set_sequence_active(True, int(getattr(self, '_per_shot_total', 1)))
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info_and_shot_log', None) is not None:
@@ -903,7 +913,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
             # If no autos are pending, we can re-enable Fire now
             try:
-                if not self._pending_auto_addresses and not self._info_write_pending:
+                # Only re-enable if the entire per-shot run has finished (no per-shot active)
+                if not self._pending_auto_addresses and not self._info_write_pending and not getattr(self, '_per_shot_active', False):
                     self._set_fire_button_enabled(True)
             except Exception:
                 pass
@@ -950,8 +961,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
                 try:
-                    if not self._pending_auto_addresses and not getattr(self, '_info_write_pending', False):
+                    # only enable Fire if the per-shot sequence has fully finished too
+                    if not self._pending_auto_addresses and not getattr(self, '_info_write_pending', False) and not getattr(self, '_per_shot_active', False):
                         self._set_fire_button_enabled(True)
+                        # if there was a queued run request, start it now
+                        if getattr(self, '_queued_fire_request', False):
+                            self._queued_fire_request = False
+                            QtCore.QTimer.singleShot(50, lambda: self._on_fire_clicked())
                 except Exception:
                     pass
         except Exception:

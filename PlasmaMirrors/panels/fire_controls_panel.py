@@ -164,7 +164,9 @@ class FireControlsPanel(QtWidgets.QWidget):
                 self.seq_progress.setValue(0)
                 # visually fade the Fire button when active
                 self.btn_fire.setStyleSheet("background:#444444; color:#9a9a9a; font-weight:600;")
-                self.btn_fire.setEnabled(False)
+                # keep the button enabled so the user can click to queue another sequence;
+                # MainWindow enforces that queued requests only start once the current sequence and post-processing complete.
+                self.btn_fire.setEnabled(True)
             else:
                 self.seq_progress.setVisible(False)
                 self.seq_progress.setValue(0)
