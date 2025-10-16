@@ -1339,9 +1339,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         address, target_pos = self._saved_move_queue.pop(0)
         unit = self.part1.rows[address - 1].info.unit
-        self.status_panel.append_line(f" → Moving Address {address} to {target_pos:.6f} {unit}")
         try:
-            self.stage.move_absolute(address, target_pos, unit)  # runs in StageIO thread, emits 'moved' + 'position'
+            if target_pos == 0.0:
+                self.stage.home(address)  # runs in StageIO thread, emits 'homed' + 'position'
+                self.status_panel.append_line(f" → Moving Address {address} to HOME (0.0)")
+            else:
+                self.stage.move_absolute(address, target_pos, unit)  # runs in StageIO thread, emits 'moved' + 'position'
+                self.status_panel.append_line(f" → Moving Address {address} to {target_pos:.6f} {unit}")
         except Exception as e:
             self.status_panel.append_line(f"Move error on Address {address}: {e}")
         # attempt to keep going
