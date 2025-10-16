@@ -19,6 +19,7 @@ from datetime import datetime
 from utilities.file_info_writer import InfoWriter
 import utilities.file_renamer as file_renamer
 import math
+from utilities.pm_auto import PMAutoManager
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
@@ -145,6 +146,11 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             self._info_thread = None
             self._info_writer = None
+        # PM Auto manager (computes move descriptors; MainWindow emits jogs)
+        try:
+            self._pm_auto = PMAutoManager(getattr(self, 'pm_panel', None), getattr(self, 'part1', None).rows if getattr(self, 'part1', None) is not None else [], logger=getattr(self, 'status_panel', None).append_line)
+        except Exception:
+            self._pm_auto = None
         
         # --- Center layout: 2x3 grid ---------------------------------
         central = QtWidgets.QWidget()
@@ -889,114 +895,34 @@ class MainWindow(QtWidgets.QMainWindow):
                 try: self.status_panel.append_line("PM Auto: skipping because not in single-shot mode")
                 except Exception: pass
                 return
-            # For each PM mirror group, check auto and compute the Y stage delta
-            auto_addresses = set()
-            for mg in (self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3):
-                try:
-                    if not getattr(mg, 'auto', None) or not mg.auto.isChecked():
-                        try: self.status_panel.append_line(f"PM Auto: group {getattr(mg,'name',None).text() if getattr(mg,'name',None) else 'unknown'} auto unchecked; skipping")
-                        except Exception: pass
-                        continue
-                    # determine intended behavior based on Target Type
-                    target_type = str(mg.target_type.currentText()).strip().lower() if getattr(mg, 'target_type', None) is not None else 'rectangular'
-                    # distance in mm (or unit of stage)
-                    dist = float(mg.dist.value())
-                    # direction drop-down on the Y row: 'Pos' or 'Neg'
-                    dir_choice = str(mg.row_y.dir.currentText()) if getattr(mg.row_y, 'dir', None) is not None else 'Pos'
-
-                    if target_type.startswith('c'):
-                        # Circular target: move the RX axis by angle = (180 * Dist) / (pi * r)
-                        # where r = (Y.max - current_y + 4.25)
-                        try:
-                            rx_stage_num = int(mg.row_rx.stage_num.value())
-                        except Exception:
-                            rx_stage_num = 0
-                        if rx_stage_num <= 0:
-                            try: self.status_panel.append_line(f"PM Auto: group has invalid RX stage_num {rx_stage_num}; skipping Circular auto")
-                            except Exception: pass
-                            continue
-                        # read Zero Pos for Y (preferred source for r) and the current Y position
-                        try:
-                            zero_pos = float(mg.row_y.get_zero())
-                        except Exception:
-                            zero_pos = None
-                        # read the current Y position from part1 if possible (preferred), otherwise fall back to the UI label
-                        current_y = None
-                        try:
-                            y_addr = int(mg.row_y.stage_num.value())
-                            if y_addr > 0 and hasattr(self, 'part1') and len(self.part1.rows) >= y_addr:
-                                try:
-                                    current_y = float(self.part1.rows[y_addr - 1].info.eng_value)
-                                except Exception:
-                                    current_y = None
-                        except Exception:
-                            current_y = None
-                        if current_y is None:
-                            try:
-                                # fallback to displayed current label in the PM row
-                                current_y = float(mg.row_y.get_current())
-                            except Exception:
-                                current_y = 0.0
-                        if zero_pos is None:
-                            # fallback: if Zero Pos is not defined, try to use Y max + 4.25 as previous behavior
-                            try:
-                                y_max = float(mg.row_y.max.value())
-                            except Exception:
-                                y_max = 0.0
-                            r = (y_max - float(current_y) + 4.25)
-                            try:
-                                self.status_panel.append_line(f"PM Auto (Circular): Zero Pos missing, falling back to (Y.max - current_y + 4.25) => r={r:.3f}")
-                            except Exception:
-                                pass
-                        else:
-                            r = (float(zero_pos) - float(current_y))
-                        if abs(r) < 1e-6:
-                            try: self.status_panel.append_line(f"PM Auto: computed r is zero for Circular target (zero_pos={zero_pos}, current={current_y}); skipping")
-                            except Exception: pass
-                            continue
-                        # angle in degrees
-                        delta_angle = (180.0 * dist) / (math.pi * r)
-                        # apply direction sign according to RX axis direction (not Y)
-                        rx_dir = str(mg.row_rx.dir.currentText()) if getattr(mg.row_rx, 'dir', None) is not None else 'Pos'
-                        delta = delta_angle if rx_dir.lower().startswith('p') else -abs(delta_angle)
-                        try:
-                            unit = getattr(self.part1.rows[rx_stage_num - 1].info, 'unit', 'deg')
-                        except Exception:
-                            unit = 'deg'
-                        try:
-                            self.status_panel.append_line(f"PM Auto (Circular): moving RX stage {rx_stage_num} by {delta:.6f} {unit} (r={r:.3f}, zero_pos={zero_pos}, current_y={current_y:.3f}, dist={dist:.3f})")
-                        except Exception:
-                            pass
-                        auto_addresses.add(rx_stage_num)
-                        QtCore.QTimer.singleShot(0, lambda a=rx_stage_num, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
-                    else:
-                        # Linear/Rectangular: legacy behavior (move Y stage by Dist)
-                        try:
-                            sd_row = mg.row_y
-                            stage_num = int(sd_row.stage_num.value())
-                        except Exception:
-                            stage_num = 0
-                        if stage_num <= 0:
-                            try: self.status_panel.append_line(f"PM Auto: group has invalid Y stage_num {stage_num}; skipping")
-                            except Exception: pass
-                            continue
-                        delta = dist if dir_choice.lower().startswith('p') else -abs(dist)
-                        # determine unit from MotorStatusPanel
-                        try:
-                            unit = getattr(self.part1.rows[stage_num - 1].info, 'unit', 'mm')
-                        except Exception:
-                            unit = 'mm'
-                        try:
-                            self.status_panel.append_line(f"PM Auto: moving stage {stage_num} by {delta:.6f} {unit}")
-                        except Exception:
-                            pass
-                        auto_addresses.add(stage_num)
-                        QtCore.QTimer.singleShot(0, lambda a=stage_num, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
-                except Exception:
-                    continue
-            # mark pending auto addresses and keep Fire disabled until they finish
+            # Compute PM Auto moves using PMAutoManager and emit jogs
             try:
-                self._pending_auto_addresses.update(auto_addresses)
+                moves = []
+                if getattr(self, '_pm_auto', None) is not None:
+                    try:
+                        moves = self._pm_auto.generate_moves()
+                    except Exception:
+                        moves = []
+                auto_addresses = set()
+                for m in moves:
+                    try:
+                        addr = int(m.get('address'))
+                        delta = float(m.get('delta', 0.0))
+                        unit = str(m.get('unit', ''))
+                        log = str(m.get('log', ''))
+                        try:
+                            if log:
+                                self.status_panel.append_line(log)
+                        except Exception:
+                            pass
+                        auto_addresses.add(addr)
+                        QtCore.QTimer.singleShot(0, lambda a=addr, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
+                    except Exception:
+                        continue
+                try:
+                    self._pending_auto_addresses.update(auto_addresses)
+                except Exception:
+                    pass
             except Exception:
                 pass
             try:
