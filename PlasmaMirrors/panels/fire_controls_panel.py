@@ -1,6 +1,5 @@
 from __future__ import annotations
 from PyQt6 import QtCore, QtWidgets
-from PyQt6 import QtCore, QtWidgets
 
 class FireControlsPanel(QtWidgets.QWidget):
     # GUI -> backend
@@ -30,7 +29,9 @@ class FireControlsPanel(QtWidgets.QWidget):
         col_modes.addWidget(self.rb_single)
         col_modes.addWidget(self.rb_burst)
         col_modes.addStretch(1)
-        g.addLayout(col_modes, 0, 0, 3, 1)
+        # span the modes column down a few rows so it vertically aligns with the
+        # other rows we add (shots, buffers, counter, fire button)
+        g.addLayout(col_modes, 0, 0, 5, 1)
 
         # Shots row (shared for Single & Burst)
         lab_shots = QtWidgets.QLabel("# Shots:")
@@ -58,6 +59,7 @@ class FireControlsPanel(QtWidgets.QWidget):
         interval_row.addWidget(lab_interval)
         interval_row.addWidget(self.spin_interval)
         interval_row.addStretch(1)
+        # place Camera Buffer in row 1, spanning the two right-hand columns
         g.addLayout(interval_row, 1, 1, 1, 2)
 
         # ----- Post-Auto buffer (ms) -----
@@ -72,7 +74,8 @@ class FireControlsPanel(QtWidgets.QWidget):
         post_auto_row.addWidget(lab_post_auto)
         post_auto_row.addWidget(self.spin_post_auto)
         post_auto_row.addStretch(1)
-        g.addLayout(post_auto_row, 1, 2, 1, 1)
+        # place Post-Auto buffer on its own row (row 2) to avoid overlap
+        g.addLayout(post_auto_row, 2, 1, 1, 2)
 
         # ----- Shot Counter (read-only display) -----
         lab_counter = QtWidgets.QLabel("Shot Counter:")
@@ -92,7 +95,8 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.btn_reset.setFixedWidth(70)
         counter_row.addWidget(self.btn_reset)
         counter_row.addStretch(1)
-        g.addLayout(counter_row, 2, 1, 1, 2)
+        # move counter to row 3 because we added the post-auto row
+        g.addLayout(counter_row, 3, 1, 1, 2)
 
         # Big Fire button spanning the width
         self.btn_fire = QtWidgets.QPushButton("Fire")
@@ -100,7 +104,8 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.btn_fire.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                                     QtWidgets.QSizePolicy.Policy.Fixed)
         self.btn_fire.setStyleSheet("background:#D30000; color:white; font-weight:700;")
-        g.addWidget(self.btn_fire, 3, 1, 1, 2)
+        # Fire button now on row 4
+        g.addWidget(self.btn_fire, 4, 1, 1, 2)
 
         # Sequence progress bar (hidden until a sequence starts)
         self.seq_progress = QtWidgets.QProgressBar()
@@ -109,11 +114,13 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.seq_progress.setValue(0)
         self.seq_progress.setTextVisible(True)
         self.seq_progress.setVisible(False)
-        g.addWidget(self.seq_progress, 4, 1, 1, 2)
+        # Sequence progress now on row 5
+        g.addWidget(self.seq_progress, 5, 1, 1, 2)
 
         # Status line
         self.lab_status = QtWidgets.QLabel("Ready")
-        g.addWidget(self.lab_status, 4, 0, 1, 1)
+        # status aligned with the progress bar on the left
+        g.addWidget(self.lab_status, 5, 0, 1, 1)
 
         # column stretch so the button gets space
         g.setColumnStretch(0, 1)
