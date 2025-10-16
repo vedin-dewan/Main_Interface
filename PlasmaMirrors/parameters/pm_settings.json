@@ -1,7 +1,7 @@
 {
   "pm1": {
     "name": "Plasma Mirror 1",
-    "auto": false,
+    "auto": true,
     "dist": 0.75,
     "target_type": 0,
     "bypass": false,
@@ -13,7 +13,7 @@
         "zero": 30.0,
         "mo": 0.0,
         "cur": 0.0,
-        "dir": 0
+        "dir": 1
       },
       "y": {
         "stage_num": 2,
@@ -91,7 +91,7 @@
   },
   "pm3": {
     "name": "Plasma Mirror 3",
-    "auto": false,
+    "auto": true,
     "dist": 0.75,
     "target_type": 1,
     "bypass": false,
@@ -111,7 +111,7 @@
         "max": 176.0,
         "zero": 110.12,
         "mo": 96.818,
-        "cur": 0.0,
+        "cur": 0.75,
         "dir": 0
       },
       "z": {
@@ -134,5 +134,5 @@
       }
     }
   },
-  "saved_time": "2025-10-16T12:34:24"
+  "saved_time": "2025-10-16T12:42:07"
 }
