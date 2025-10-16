@@ -1145,7 +1145,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     if getattr(self, '_queued_fire_request', False):
                         self._queued_fire_request = False
-                        QtCore.QTimer.singleShot(50, lambda: self._on_fire_clicked())
+                        try:
+                            buffer_ms = int(getattr(self, 'fire_panel', None).spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 50
+                        except Exception:
+                            buffer_ms = 50
+                        # schedule start of queued run after the Post-Auto buffer
+                        QtCore.QTimer.singleShot(buffer_ms, lambda: self._on_fire_clicked())
+                        try:
+                            self.status_panel.append_line(f'Queued run will start after Post-Auto buffer ({buffer_ms} ms)')
+                        except Exception:
+                            pass
                 except Exception:
                     pass
         except Exception:
@@ -1189,7 +1198,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
                 try:
                     self._queued_fire_request = False
-                    QtCore.QTimer.singleShot(20, lambda: self._on_fire_clicked())
+                    try:
+                        buffer_ms = int(getattr(self, 'fire_panel', None).spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 50
+                    except Exception:
+                        buffer_ms = 50
+                    QtCore.QTimer.singleShot(buffer_ms, lambda: self._on_fire_clicked())
+                    try:
+                        self.status_panel.append_line(f'Queued run will start after Post-Auto buffer ({buffer_ms} ms)')
+                    except Exception:
+                        pass
                 except Exception:
                     pass
         except Exception:
