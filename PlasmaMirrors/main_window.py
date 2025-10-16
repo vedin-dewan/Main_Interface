@@ -116,6 +116,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._per_shot_completed_in_run = 0
         # timer to poll completion conditions for queued runs
         self._queued_check_timer = None
+        # when True, a next shot should be queued only once post-processing and autos complete
+        self._next_shot_when_ready = False
 
         # --- Info writer thread (background) ---
         try:
@@ -641,17 +643,25 @@ class MainWindow(QtWidgets.QMainWindow):
             # continue until displayed counter reaches absolute target
             target = getattr(self, '_per_shot_target', None)
             if target is not None and self._per_shot_current < target:
-                # schedule the next shot after the configured Interval (ms) regardless of rename/save success
+                # schedule the next shot depending on whether any PM Auto is enabled
                 try:
                     interval_ms = int(getattr(self, '_rename_max_wait_ms', 1000))
-                    def _queue_next():
+                    # If any PM Auto is enabled, wait until autos finish (do not use interval)
+                    if self._any_pm_auto_enabled():
                         try:
-                            QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                            self._next_shot_when_ready = True
+                            self.status_panel.append_line('Next shot will start after PM Auto moves complete (ignoring Interval)')
                         except Exception:
-                            try: self.status_panel.append_line("Failed to queue next one-shot")
-                            except Exception: pass
-                    # use QTimer.singleShot to wait interval_ms before firing next shot
-                    QtCore.QTimer.singleShot(interval_ms, _queue_next)
+                            pass
+                    else:
+                        # schedule the next shot after the configured Interval (ms)
+                        def _queue_next():
+                            try:
+                                QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                            except Exception:
+                                try: self.status_panel.append_line("Failed to queue next one-shot")
+                                except Exception: pass
+                        QtCore.QTimer.singleShot(interval_ms, _queue_next)
                 except Exception:
                     try: self.status_panel.append_line("Failed to schedule next one-shot")
                     except Exception: pass
@@ -1014,6 +1024,22 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             if getattr(self, '_pending_auto_addresses', None) is None:
                 self._pending_auto_addresses = set()
+            # If we are waiting to start the next shot only after autos/info-writes, handle that first
+            try:
+                if getattr(self, '_next_shot_when_ready', False):
+                    # If no info write and no pending autos, queue the next one-shot now
+                    if not getattr(self, '_info_write_pending', False) and not self._pending_auto_addresses:
+                        try:
+                            self._next_shot_when_ready = False
+                            QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                            self.status_panel.append_line('Queued next one-shot after PM Auto completion')
+                            return
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # If sequence fully finished (no per-shot active) and no pending post-processing, re-enable Fire
             if not self._pending_auto_addresses and not getattr(self, '_info_write_pending', False) and not getattr(self, '_per_shot_active', False):
                 try:
                     self._set_fire_button_enabled(True)
@@ -1028,6 +1054,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
         except Exception:
             pass
+
+    def _any_pm_auto_enabled(self) -> bool:
+        """Return True if any PM mirror group's Auto checkbox is checked."""
+        try:
+            for mg in (getattr(self, 'pm_panel', None) and getattr(self.pm_panel, 'pm1', None), getattr(self, 'pm_panel', None) and getattr(self.pm_panel, 'pm2', None), getattr(self, 'pm_panel', None) and getattr(self.pm_panel, 'pm3', None)):
+                try:
+                    if mg and getattr(mg, 'auto', None) and mg.auto.isChecked():
+                        return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False
 
     def _check_and_start_queued_run(self):
         """Watchdog called periodically while a queued run exists. If finish conditions
