@@ -482,7 +482,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         # Build a short message summarizing the first few violations
                         msgs = []
                         for v in violations[:5]:
-                            relation = 'below Min' if v.get('relation') == 'below' else '>= Max'
+                            relation = 'below Min' if v.get('relation') == 'below' else 'above Max'
                             msgs.append(f"{v.get('pm_name')} {v.get('row_label')} (Addr {v.get('address')}): {v.get('position'):.3f} {relation} [{v.get('min')},{v.get('max')}]")
                         more = ''
                         if len(violations) > 5:

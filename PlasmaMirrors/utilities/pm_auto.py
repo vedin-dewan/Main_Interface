@@ -140,7 +140,7 @@ class PMAutoManager:
           - position
           - min
           - max
-          - relation ('below' or 'above_or_equal')
+          - relation ('below' or 'above')
         """
         violations: List[Dict[str, Any]] = []
         if not hasattr(self, 'pm_panel') or self.pm_panel is None:
@@ -180,10 +180,11 @@ class PMAutoManager:
                         max_v = float(row.max.value())
                     except Exception:
                         max_v = None
-                    if min_v is not None and pos < min_v:
+                    tol = 1e-4
+                    if min_v is not None and pos < min_v - tol:
                         violations.append({'pm_name': pm_name, 'row_label': row_label, 'address': addr, 'position': pos, 'min': min_v, 'max': max_v, 'relation': 'below'})
-                    elif max_v is not None and pos >= max_v:
-                        violations.append({'pm_name': pm_name, 'row_label': row_label, 'address': addr, 'position': pos, 'min': min_v, 'max': max_v, 'relation': 'above_or_equal'})
+                    elif max_v is not None and pos > max_v + tol:
+                        violations.append({'pm_name': pm_name, 'row_label': row_label, 'address': addr, 'position': pos, 'min': min_v, 'max': max_v, 'relation': 'above'})
             except Exception:
                 continue
         return violations
