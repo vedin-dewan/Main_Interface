@@ -180,93 +180,27 @@ class InfoWriter(QtCore.QObject):
 
             # camera lines
             try:
-                # diagnostic: report incoming payload sizes
-                try:
-                    self.log.emit(f"InfoWriter: cameras_payload={len(cameras)}, spectrometers_payload={len(spectrometers)}, renamed_count={len(renamed)}")
-                    if len(cameras) > 0:
-                        names_preview = ','.join([str(c.get('Name','')).strip() for c in cameras[:3]])
-                        self.log.emit(f"InfoWriter: camera_names_preview={names_preview}")
-                except Exception:
-                    pass
                 cam_by_name = {str(c.get('Name','')).strip(): c for c in cameras if c.get('Name')}
-                camera_lines_added = 0
-                # Diagnostic: log tokens extracted from renamed files and membership in cam_by_name
-                try:
-                    try:
-                        keys = list(cam_by_name.keys())
-                        self.log.emit(f"InfoWriter: cam_by_name_keys={keys}")
-                    except Exception:
-                        pass
-                    for nm, p in renamed:
-                        try:
-                            if not p:
-                                continue
-                            token = os.path.basename(p).split('_')[0]
-                            present = token in cam_by_name
-                            self.log.emit(f"InfoWriter: renamed_token='{token}', in_cam_by_name={present}, newfull='{p}'")
-                        except Exception:
-                            continue
-                except Exception:
-                    pass
                 for name, newfull in sorted(((n, p) for n, p in ((
-                    ( (lambda b: (b.split('_')[-2] if len(b.split('_'))>1 else b.split('_')[0]))(os.path.basename(p)), p) if p else (None, None)
+                    (os.path.basename(p).split('_')[-2], p) if p else (None, None)
                 ) for nm, p in renamed) if n in cam_by_name), key=lambda x: x[0]):
                     c = cam_by_name.get(name, {})
                     purpose = str(c.get('Purpose','')).strip()
                     filters = str(c.get('Filters','')).strip()
                     info_lines.append(f"{name} $\t{purpose} $\t{filters} $\t\t{newfull}")
-                    camera_lines_added += 1
-                try:
-                    self.log.emit(f"InfoWriter: camera_lines_added after primary match = {camera_lines_added}")
-                except Exception:
-                    pass
             except Exception:
                 # fallback: attempt to match renamed by camera token (if provided separately)
                 try:
                     cam_by_name = {str(c.get('Name','')).strip(): c for c in cameras if c.get('Name')}
                     for (oldf, newf) in renamed:
                         nb = os.path.basename(newf)
-                        matched = False
                         for name in cam_by_name:
                             if name and name.lower() in nb.lower():
                                 c = cam_by_name.get(name, {})
                                 purpose = str(c.get('Purpose','')).strip()
                                 filters = str(c.get('Filters','')).strip()
                                 info_lines.append(f"{name} $\t{purpose} $\t{filters} $\t\t{newf}")
-                                camera_lines_added += 1
-                                matched = True
                                 break
-                        # continue to next file
-                        if matched:
-                            continue
-                except Exception:
-                    pass
-
-                try:
-                    self.log.emit(f"InfoWriter: camera_lines_added after fallback match = {camera_lines_added}")
-                except Exception:
-                    pass
-
-                # If no camera lines were added by the matching logic, add a robust fallback:
-                # include any renamed files that look like images with a best-effort name token.
-                try:
-                    if camera_lines_added == 0:
-                        image_exts = ('.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp')
-                        for (oldf, newf) in renamed:
-                            try:
-                                nb = os.path.basename(newf)
-                                if not nb or not any(nb.lower().endswith(ext) for ext in image_exts):
-                                    continue
-                                name = nb.split('_')[0] if '_' in nb else os.path.splitext(nb)[0]
-                                purpose = ''
-                                filters = ''
-                                info_lines.append(f"{name} $\t{purpose} $\t{filters} $\t\t{newf}")
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
-                try:
-                    self.log.emit(f"InfoWriter: camera_lines_added after final fallback = {camera_lines_added}")
                 except Exception:
                     pass
 
@@ -274,7 +208,7 @@ class InfoWriter(QtCore.QObject):
             try:
                 spec_by_token = {str(s.get('filename','')).strip(): s for s in spectrometers if s.get('filename')}
                 for token, newfull in sorted(((t, p) for t, p in ((
-                    ( (lambda b: (b.split('_')[-2] if len(b.split('_'))>1 else b.split('_')[0]))(os.path.basename(p)), p) if p else (None, None)
+                    (os.path.basename(p).split('_')[-2], p) if p else (None, None)
                 ) for nm, p in renamed) if t in spec_by_token), key=lambda x: x[0]):
                     s = spec_by_token.get(token, {})
                     name = str(s.get('name','')).strip()
