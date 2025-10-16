@@ -119,7 +119,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._info_writer.log.connect(self.status_panel.append_line)
                 except Exception:
                     pass
-                self._info_thread.started.connect(lambda: None)
+                    self._info_thread.started.connect(lambda: None)
+                    # listen for write completion so we can trigger PM "Auto" moves
+                    try:
+                        if getattr(self._info_writer, 'write_complete', None) is not None:
+                            self._info_writer.write_complete.connect(self._on_info_written)
+                    except Exception:
+                        pass
                 self._info_thread.start()
             else:
                 self._info_thread = None
@@ -750,6 +756,45 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.pm_panel.set_bypass_enabled_for_address(address, not bool(is_moving))
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+    @QtCore.pyqtSlot(dict)
+    def _on_info_written(self, payload: dict):
+        """Called when Info + SHOT_LOG have been written for a shot.
+        If any PM mirror group has Auto checked, move its Y stage by Dist in the
+        selected direction (Pos/Neg). This is performed as a relative move (req_jog).
+        """
+        try:
+            # Only perform Auto behavior when in a per-shot sequence (single-shot mode)
+            if not getattr(self, '_per_shot_active', False):
+                return
+            # For each PM mirror group, check auto and compute the Y stage delta
+            for mg in (self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3):
+                try:
+                    if not getattr(mg, 'auto', None) or not mg.auto.isChecked():
+                        continue
+                    # use mg.row_y to find stage number and direction
+                    sd_row = mg.row_y
+                    stage_num = int(sd_row.stage_num.value())
+                    # distance in mm (or unit of stage)
+                    dist = float(mg.dist.value())
+                    # direction drop-down: 'Pos' or 'Neg'
+                    dir_choice = str(mg.row_y.dir.currentText()) if getattr(mg.row_y, 'dir', None) is not None else 'Pos'
+                    delta = dist if dir_choice.lower().startswith('p') else -abs(dist)
+                    # determine unit from MotorStatusPanel
+                    try:
+                        unit = getattr(self.part1.rows[stage_num - 1].info, 'unit', 'mm')
+                    except Exception:
+                        unit = 'mm'
+                    # emit jog request to move by delta
+                    try:
+                        self.status_panel.append_line(f"PM Auto: moving stage {stage_num} by {delta:.6f} {unit}")
+                    except Exception:
+                        pass
+                    QtCore.QTimer.singleShot(0, lambda a=stage_num, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
+                except Exception:
+                    continue
         except Exception:
             pass
 

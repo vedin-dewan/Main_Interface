@@ -13,6 +13,8 @@ class InfoWriter(QtCore.QObject):
       - info_lines: List[str]
     """
     log = QtCore.pyqtSignal(str)
+    # emitted when write_info_and_shot_log finishes; payload is the dict passed in
+    write_complete = QtCore.pyqtSignal(dict)
 
     @QtCore.pyqtSlot(dict)
     def write_info(self, payload: dict):
@@ -255,6 +257,17 @@ class InfoWriter(QtCore.QObject):
                 with open(shot_log_path, 'a', encoding='utf-8') as shf:
                     shf.write(shot_log_line + '\n')
                 self.log.emit(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
+                # Notify listeners that the Info + SHOT_LOG write has completed
+                try:
+                    payload_out = dict(payload) if isinstance(payload, dict) else {}
+                    # include derived info_name/outdir/shotnum to help listeners
+                    payload_out.setdefault('outdir', outdir)
+                    payload_out.setdefault('info_name', info_name)
+                    payload_out.setdefault('shotnum', shotnum)
+                    payload_out.setdefault('event_ts', event_ts)
+                    self.write_complete.emit(payload_out)
+                except Exception:
+                    pass
             except Exception as e:
                 self.log.emit(f"InfoWriter: failed to update SHOT_LOG: {e}")
 
