@@ -91,7 +91,7 @@
   },
   "pm3": {
     "name": "Plasma Mirror 3",
-    "auto": true,
+    "auto": false,
     "dist": 0.75,
     "target_type": 1,
     "bypass": false,
@@ -134,5 +134,5 @@
       }
     }
   },
-  "saved_time": "2025-10-16T13:21:43"
+  "saved_time": "2025-10-16T14:09:56"
 }
