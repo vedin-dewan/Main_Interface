@@ -417,9 +417,19 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                     json.dump(con, cf, indent=2)
             except Exception:
                 pass
-            # notify listeners (MainWindow) that stages changed
+            # notify listeners (MainWindow) that stages changed unless caller
+            # specifically requested no emit. Default behavior keeps existing
+            # behavior for external callers.
             try:
-                self.stages_changed.emit(self._stages)
+                emit = True
+                # callers may have set a temporary attribute to suppress emit
+                if hasattr(self, '_suppress_emit') and self._suppress_emit:
+                    emit = False
+                if emit:
+                    try:
+                        self.stages_changed.emit(self._stages)
+                    except Exception:
+                        pass
             except Exception:
                 pass
         except Exception:
@@ -429,22 +439,77 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         if idx < 0 or idx >= len(self._stages):
             return
         s = self._stages[idx]
-        self.name_edit.setText(str(s.get('name','')))
-        self.model_edit.setText(str(s.get('model_number','')))
-        t = s.get('type','Linear')
-        if t not in ("Linear","Rotation"):
-            t = 'Linear'
-        self.type_combo.setCurrentText(t)
-        # populate numeric value
+        # Populate form fields without emitting change signals. Several widgets
+        # are connected to autosave handlers; setting them programmatically
+        # would trigger _save_stages and cause the MainWindow to rebuild the
+        # MotorStatusPanel (resetting readback values). Block signals here.
         try:
+            self.name_edit.blockSignals(True)
+            self.model_edit.blockSignals(True)
+            self.type_combo.blockSignals(True)
             self.num_spin.blockSignals(True)
-            self.num_spin.setValue(int(s.get('num', 0)))
+            self.abr_edit.blockSignals(True)
+            self.desc_edit.blockSignals(True)
+            self.com_combo.blockSignals(True)
+            self.baud_combo.blockSignals(True)
+
+            self.name_edit.setText(str(s.get('name','')))
+            self.model_edit.setText(str(s.get('model_number','')))
+            t = s.get('type','Linear')
+            if t not in ("Linear","Rotation"):
+                t = 'Linear'
+            self.type_combo.setCurrentText(t)
+            # populate numeric value
+            try:
+                self.num_spin.setValue(int(s.get('num', 0)))
+            except Exception:
+                pass
+            self.abr_edit.setText(str(s.get('Abr','')))
+            self.desc_edit.setPlainText(str(s.get('description','')))
+            # limit: use 'limit' field if present; this field is read-only and will be updated
+            # from device-reported bounds via set_limit_for_stage
+            limit = s.get('limit', '')
+            try:
+                if limit == '' or limit is None:
+                    txt = ''
+                else:
+                    txt = f"{float(limit):.5g}"
+            except Exception:
+                txt = str(limit)
+            self.limit_edit.setText(txt)
+            # populate COM if stored previously
+            com = s.get('com', '')
+            if com:
+                # make sure it's present in combo
+                if self.com_combo.findText(com) == -1:
+                    self.com_combo.addItem(com)
+                self.com_combo.setCurrentText(com)
+            # populate baud if present
+            baud = s.get('baud', '')
+            if baud:
+                try:
+                    if self.baud_combo.findText(str(baud)) == -1:
+                        self.baud_combo.addItem(str(baud))
+                    self.baud_combo.setCurrentText(str(baud))
+                except Exception:
+                    pass
         finally:
-            self.num_spin.blockSignals(False)
-        self.abr_edit.setText(str(s.get('Abr','')))
-        self.desc_edit.blockSignals(True)
-        self.desc_edit.setPlainText(str(s.get('description','')))
-        self.desc_edit.blockSignals(False)
+            try: self.name_edit.blockSignals(False)
+            except Exception: pass
+            try: self.model_edit.blockSignals(False)
+            except Exception: pass
+            try: self.type_combo.blockSignals(False)
+            except Exception: pass
+            try: self.num_spin.blockSignals(False)
+            except Exception: pass
+            try: self.abr_edit.blockSignals(False)
+            except Exception: pass
+            try: self.desc_edit.blockSignals(False)
+            except Exception: pass
+            try: self.com_combo.blockSignals(False)
+            except Exception: pass
+            try: self.baud_combo.blockSignals(False)
+            except Exception: pass
         # limit: use 'limit' field if present; this field is read-only and will be updated
         # from device-reported bounds via set_limit_for_stage
         limit = s.get('limit', '')
@@ -502,7 +567,23 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                 self._stages = sorted(self._stages, key=lambda x: int(x.get('num', 0)))
             except Exception:
                 pass
-            self._save_stages()
+            # Only emit a full stages_changed notification when the stage
+            # name or its numeric 'num' changes. Other edits persist to disk
+            # but should not trigger the MainWindow to rebuild the MotorStatusPanel.
+            try:
+                if key in ('name', 'num'):
+                    # normal save + emit
+                    self._save_stages()
+                else:
+                    # persist but suppress the stages_changed emit
+                    try:
+                        self._suppress_emit = True
+                        self._save_stages()
+                    finally:
+                        try: del self._suppress_emit
+                        except Exception: pass
+            except Exception:
+                pass
         except Exception:
             pass
 
