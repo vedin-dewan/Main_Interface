@@ -766,17 +766,31 @@ class MainWindow(QtWidgets.QMainWindow):
         selected direction (Pos/Neg). This is performed as a relative move (req_jog).
         """
         try:
+            # Diagnostic log: record that the info write completed and payload keys
+            try:
+                sn = payload.get('shotnum', None) if isinstance(payload, dict) else None
+                self.status_panel.append_line(f"InfoWriter completed for shot {sn}")
+            except Exception:
+                pass
             # Only perform Auto behavior when in a per-shot sequence (single-shot mode)
             if not getattr(self, '_per_shot_active', False):
+                try: self.status_panel.append_line("PM Auto: skipping because per-shot sequence not active")
+                except Exception: pass
                 return
             # For each PM mirror group, check auto and compute the Y stage delta
             for mg in (self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3):
                 try:
                     if not getattr(mg, 'auto', None) or not mg.auto.isChecked():
+                        try: self.status_panel.append_line(f"PM Auto: group {getattr(mg,'name',None).text() if getattr(mg,'name',None) else 'unknown'} auto unchecked; skipping")
+                        except Exception: pass
                         continue
                     # use mg.row_y to find stage number and direction
                     sd_row = mg.row_y
                     stage_num = int(sd_row.stage_num.value())
+                    if stage_num <= 0:
+                        try: self.status_panel.append_line(f"PM Auto: group has invalid Y stage_num {stage_num}; skipping")
+                        except Exception: pass
+                        continue
                     # distance in mm (or unit of stage)
                     dist = float(mg.dist.value())
                     # direction drop-down: 'Pos' or 'Neg'
