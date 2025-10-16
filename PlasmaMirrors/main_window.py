@@ -906,7 +906,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     if target_type.startswith('c'):
                         # Circular target: move the RX axis by angle = (180 * Dist) / (pi * r)
-                        # where r = (Y.max - Y.min + 4.25)
+                        # where r = (Y.max - current_y + 4.25)
                         try:
                             rx_stage_num = int(mg.row_rx.stage_num.value())
                         except Exception:
@@ -915,29 +915,44 @@ class MainWindow(QtWidgets.QMainWindow):
                             try: self.status_panel.append_line(f"PM Auto: group has invalid RX stage_num {rx_stage_num}; skipping Circular auto")
                             except Exception: pass
                             continue
-                        try:
-                            y_min = float(mg.row_y.min.value())
-                        except Exception:
-                            y_min = 0.0
+                        # get Y max
                         try:
                             y_max = float(mg.row_y.max.value())
                         except Exception:
                             y_max = 0.0
-                        r = (y_max - y_min + 4.25)
+                        # read the current Y position from part1 if possible (preferred), otherwise fall back to the UI label
+                        current_y = None
+                        try:
+                            y_addr = int(mg.row_y.stage_num.value())
+                            if y_addr > 0 and hasattr(self, 'part1') and len(self.part1.rows) >= y_addr:
+                                try:
+                                    current_y = float(self.part1.rows[y_addr - 1].info.eng_value)
+                                except Exception:
+                                    current_y = None
+                        except Exception:
+                            current_y = None
+                        if current_y is None:
+                            try:
+                                # fallback to displayed current label in the PM row
+                                current_y = float(mg.row_y.get_current())
+                            except Exception:
+                                current_y = 0.0
+                        r = (y_max - float(current_y) + 4.25)
                         if abs(r) < 1e-6:
-                            try: self.status_panel.append_line(f"PM Auto: computed r is zero for Circular target (Y max={y_max}, min={y_min}); skipping")
+                            try: self.status_panel.append_line(f"PM Auto: computed r is zero for Circular target (Y max={y_max}, current={current_y}); skipping")
                             except Exception: pass
                             continue
                         # angle in degrees
                         delta_angle = (180.0 * dist) / (math.pi * r)
-                        # apply direction sign from Y.dir
-                        delta = delta_angle if dir_choice.lower().startswith('p') else -abs(delta_angle)
+                        # apply direction sign according to RX axis direction (not Y)
+                        rx_dir = str(mg.row_rx.dir.currentText()) if getattr(mg.row_rx, 'dir', None) is not None else 'Pos'
+                        delta = delta_angle if rx_dir.lower().startswith('p') else -abs(delta_angle)
                         try:
                             unit = getattr(self.part1.rows[rx_stage_num - 1].info, 'unit', 'deg')
                         except Exception:
                             unit = 'deg'
                         try:
-                            self.status_panel.append_line(f"PM Auto (Circular): moving RX stage {rx_stage_num} by {delta:.6f} {unit} (r={r:.3f}, dist={dist:.3f})")
+                            self.status_panel.append_line(f"PM Auto (Circular): moving RX stage {rx_stage_num} by {delta:.6f} {unit} (r={r:.3f}, y_max={y_max:.3f}, current_y={current_y:.3f}, dist={dist:.3f})")
                         except Exception:
                             pass
                         auto_addresses.add(rx_stage_num)
