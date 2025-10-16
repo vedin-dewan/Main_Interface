@@ -471,6 +471,41 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 mode = 'continuous'
 
+            # Before any firing action, if any PM Auto is enabled, perform bounds check and prompt user
+            try:
+                if getattr(self, '_pm_auto', None) is not None:
+                    try:
+                        violations = self._pm_auto.check_bounds()
+                    except Exception:
+                        violations = []
+                    if violations:
+                        # Build a short message summarizing the first few violations
+                        msgs = []
+                        for v in violations[:5]:
+                            relation = 'below Min' if v.get('relation') == 'below' else '>= Max'
+                            msgs.append(f"{v.get('pm_name')} {v.get('row_label')} (Addr {v.get('address')}): {v.get('position'):.3f} {relation} [{v.get('min')},{v.get('max')}]")
+                        more = ''
+                        if len(violations) > 5:
+                            more = f"\n...and {len(violations)-5} more"
+                        from PyQt6.QtWidgets import QMessageBox
+                        mb = QMessageBox(self)
+                        mb.setIcon(QMessageBox.Icon.Warning)
+                        mb.setWindowTitle("PM Auto bounds warning")
+                        mb.setText("One or more PM axes configured for Auto are outside their allowed bounds:")
+                        mb.setInformativeText('\n'.join(msgs) + more + '\n\nDo you want to continue firing?')
+                        mb.setStandardButtons(QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes)
+                        mb.setDefaultButton(QMessageBox.StandardButton.Cancel)
+                        resp = mb.exec()
+                        if resp == QMessageBox.StandardButton.Cancel:
+                            try: self.status_panel.append_line('Firing cancelled by user due to PM Auto bounds violation')
+                            except Exception: pass
+                            return
+                        else:
+                            try: self.status_panel.append_line('User chose to continue despite PM Auto bounds violations')
+                            except Exception: pass
+            except Exception:
+                pass
+
             # Single-mode: start or queue a per-shot loop. The displayed counter is a cumulative tally
             # that is never auto-reset; it increments only after each shot's rename completes.
             if mode == 'single':

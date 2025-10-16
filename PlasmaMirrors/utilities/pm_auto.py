@@ -129,3 +129,61 @@ class PMAutoManager:
                 continue
 
         return moves
+
+    def check_bounds(self) -> List[Dict[str, Any]]:
+        """Check stages for PM groups with Auto checked.
+
+        Returns a list of violation dicts with keys:
+          - pm_name
+          - row_label (RX/Y/Z/SD)
+          - address
+          - position
+          - min
+          - max
+          - relation ('below' or 'above_or_equal')
+        """
+        violations: List[Dict[str, Any]] = []
+        if not hasattr(self, 'pm_panel') or self.pm_panel is None:
+            return violations
+
+        for mg in (self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3):
+            try:
+                if not getattr(mg, 'auto', None) or not mg.auto.isChecked():
+                    continue
+                pm_name = getattr(mg, 'name', None).text() if getattr(mg, 'name', None) else 'PM'
+                for row_label, row in (('RX', mg.row_rx), ('Y', mg.row_y), ('Z', mg.row_z), ('SD', mg.row_sd)):
+                    try:
+                        addr = int(row.stage_num.value())
+                    except Exception:
+                        addr = 0
+                    if addr <= 0:
+                        continue
+                    # read current position preferred from part1 rows
+                    pos = None
+                    try:
+                        if addr > 0 and hasattr(self, 'part1_rows') and len(self.part1_rows) >= addr:
+                            pos = float(self.part1_rows[addr - 1].info.eng_value)
+                    except Exception:
+                        pos = None
+                    if pos is None:
+                        try:
+                            pos = float(row.get_current())
+                        except Exception:
+                            pos = None
+                    if pos is None:
+                        continue
+                    try:
+                        min_v = float(row.min.value())
+                    except Exception:
+                        min_v = None
+                    try:
+                        max_v = float(row.max.value())
+                    except Exception:
+                        max_v = None
+                    if min_v is not None and pos < min_v:
+                        violations.append({'pm_name': pm_name, 'row_label': row_label, 'address': addr, 'position': pos, 'min': min_v, 'max': max_v, 'relation': 'below'})
+                    elif max_v is not None and pos >= max_v:
+                        violations.append({'pm_name': pm_name, 'row_label': row_label, 'address': addr, 'position': pos, 'min': min_v, 'max': max_v, 'relation': 'above_or_equal'})
+            except Exception:
+                continue
+        return violations
