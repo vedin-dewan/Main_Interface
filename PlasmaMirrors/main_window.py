@@ -18,6 +18,7 @@ import time
 from datetime import datetime
 from utilities.file_info_writer import InfoWriter
 import utilities.file_renamer as file_renamer
+import math
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
@@ -896,30 +897,74 @@ class MainWindow(QtWidgets.QMainWindow):
                         try: self.status_panel.append_line(f"PM Auto: group {getattr(mg,'name',None).text() if getattr(mg,'name',None) else 'unknown'} auto unchecked; skipping")
                         except Exception: pass
                         continue
-                    # use mg.row_y to find stage number and direction
-                    sd_row = mg.row_y
-                    stage_num = int(sd_row.stage_num.value())
-                    if stage_num <= 0:
-                        try: self.status_panel.append_line(f"PM Auto: group has invalid Y stage_num {stage_num}; skipping")
-                        except Exception: pass
-                        continue
+                    # determine intended behavior based on Target Type
+                    target_type = str(mg.target_type.currentText()).strip().lower() if getattr(mg, 'target_type', None) is not None else 'rectangular'
                     # distance in mm (or unit of stage)
                     dist = float(mg.dist.value())
-                    # direction drop-down: 'Pos' or 'Neg'
+                    # direction drop-down on the Y row: 'Pos' or 'Neg'
                     dir_choice = str(mg.row_y.dir.currentText()) if getattr(mg.row_y, 'dir', None) is not None else 'Pos'
-                    delta = dist if dir_choice.lower().startswith('p') else -abs(dist)
-                    # determine unit from MotorStatusPanel
-                    try:
-                        unit = getattr(self.part1.rows[stage_num - 1].info, 'unit', 'mm')
-                    except Exception:
-                        unit = 'mm'
-                    # emit jog request to move by delta
-                    try:
-                        self.status_panel.append_line(f"PM Auto: moving stage {stage_num} by {delta:.6f} {unit}")
-                    except Exception:
-                        pass
-                    auto_addresses.add(stage_num)
-                    QtCore.QTimer.singleShot(0, lambda a=stage_num, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
+
+                    if target_type.startswith('c'):
+                        # Circular target: move the RX axis by angle = (180 * Dist) / (pi * r)
+                        # where r = (Y.max - Y.min + 4.25)
+                        try:
+                            rx_stage_num = int(mg.row_rx.stage_num.value())
+                        except Exception:
+                            rx_stage_num = 0
+                        if rx_stage_num <= 0:
+                            try: self.status_panel.append_line(f"PM Auto: group has invalid RX stage_num {rx_stage_num}; skipping Circular auto")
+                            except Exception: pass
+                            continue
+                        try:
+                            y_min = float(mg.row_y.min.value())
+                        except Exception:
+                            y_min = 0.0
+                        try:
+                            y_max = float(mg.row_y.max.value())
+                        except Exception:
+                            y_max = 0.0
+                        r = (y_max - y_min + 4.25)
+                        if abs(r) < 1e-6:
+                            try: self.status_panel.append_line(f"PM Auto: computed r is zero for Circular target (Y max={y_max}, min={y_min}); skipping")
+                            except Exception: pass
+                            continue
+                        # angle in degrees
+                        delta_angle = (180.0 * dist) / (math.pi * r)
+                        # apply direction sign from Y.dir
+                        delta = delta_angle if dir_choice.lower().startswith('p') else -abs(delta_angle)
+                        try:
+                            unit = getattr(self.part1.rows[rx_stage_num - 1].info, 'unit', 'deg')
+                        except Exception:
+                            unit = 'deg'
+                        try:
+                            self.status_panel.append_line(f"PM Auto (Circular): moving RX stage {rx_stage_num} by {delta:.6f} {unit} (r={r:.3f}, dist={dist:.3f})")
+                        except Exception:
+                            pass
+                        auto_addresses.add(rx_stage_num)
+                        QtCore.QTimer.singleShot(0, lambda a=rx_stage_num, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
+                    else:
+                        # Linear/Rectangular: legacy behavior (move Y stage by Dist)
+                        try:
+                            sd_row = mg.row_y
+                            stage_num = int(sd_row.stage_num.value())
+                        except Exception:
+                            stage_num = 0
+                        if stage_num <= 0:
+                            try: self.status_panel.append_line(f"PM Auto: group has invalid Y stage_num {stage_num}; skipping")
+                            except Exception: pass
+                            continue
+                        delta = dist if dir_choice.lower().startswith('p') else -abs(dist)
+                        # determine unit from MotorStatusPanel
+                        try:
+                            unit = getattr(self.part1.rows[stage_num - 1].info, 'unit', 'mm')
+                        except Exception:
+                            unit = 'mm'
+                        try:
+                            self.status_panel.append_line(f"PM Auto: moving stage {stage_num} by {delta:.6f} {unit}")
+                        except Exception:
+                            pass
+                        auto_addresses.add(stage_num)
+                        QtCore.QTimer.singleShot(0, lambda a=stage_num, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
                 except Exception:
                     continue
             # mark pending auto addresses and keep Fire disabled until they finish
