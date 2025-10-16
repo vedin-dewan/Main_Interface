@@ -566,8 +566,12 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                             except Exception:
                                 txt = str(upper)
                             self.limit_edit.setText(txt)
-                        # persist immediately
-                        self._save_stages()
+                        # Device-reported bounds should update in-memory state and the UI,
+                        # but should NOT persist to disk or emit a global stages_changed
+                        # notification. Persisting/emitting here causes MainWindow to
+                        # rebuild panels (resetting scroll/selection and displayed values)
+                        # whenever bounds are read from hardware. Leave persistence to
+                        # explicit user edits via the DeviceTabs UI.
                         break
                 except Exception:
                     continue
