@@ -74,10 +74,11 @@ class MotorRow(QtWidgets.QWidget):
         return f"{steps:,} steps".replace(",", " ")
 
     def _fmt_units(self, v: float, unit: str, rich: bool = False) -> str:
-        if unit in ("deg", "deg/s"):
-            val = f"{v:.2f}"
-        else:
-            val = f"{v:.4g}"
+        # Display values with three decimal places for all units
+        try:
+            val = f"{float(v):.3f}"
+        except Exception:
+            val = str(v)
         s = f"<b>{val}</b> {unit}" if rich else f"{val} {unit}"
         return s
 
