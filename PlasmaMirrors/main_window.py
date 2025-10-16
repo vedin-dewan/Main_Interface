@@ -660,6 +660,23 @@ class MainWindow(QtWidgets.QMainWindow):
                     'spectrometers': getattr(self.device_tabs, '_spectrometers', []) or [],
                     'event_ts': event_ts,
                 }
+                # Diagnostic: report what we're about to send to the InfoWriter
+                try:
+                    try:
+                        cams_preview = ','.join([str(c.get('Name','')).strip() for c in payload.get('cameras',[])[:3]])
+                    except Exception:
+                        cams_preview = ''
+                    try:
+                        specs_preview = ','.join([str(s.get('filename','')).strip() for s in payload.get('spectrometers',[])[:3]])
+                    except Exception:
+                        specs_preview = ''
+                    try:
+                        renamed_count = len(payload.get('renamed', []))
+                    except Exception:
+                        renamed_count = 0
+                    self.status_panel.append_line(f"Dispatching InfoWriter: cameras={len(payload.get('cameras',[]))} ({cams_preview}), specs={len(payload.get('spectrometers',[]))} ({specs_preview}), renamed={renamed_count}")
+                except Exception:
+                    pass
 
                 if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info_and_shot_log', None) is not None:
                     try:

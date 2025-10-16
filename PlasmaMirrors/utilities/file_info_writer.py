@@ -180,6 +180,14 @@ class InfoWriter(QtCore.QObject):
 
             # camera lines
             try:
+                # diagnostic: report incoming payload sizes
+                try:
+                    self.log.emit(f"InfoWriter: cameras_payload={len(cameras)}, spectrometers_payload={len(spectrometers)}, renamed_count={len(renamed)}")
+                    if len(cameras) > 0:
+                        names_preview = ','.join([str(c.get('Name','')).strip() for c in cameras[:3]])
+                        self.log.emit(f"InfoWriter: camera_names_preview={names_preview}")
+                except Exception:
+                    pass
                 cam_by_name = {str(c.get('Name','')).strip(): c for c in cameras if c.get('Name')}
                 camera_lines_added = 0
                 for name, newfull in sorted(((n, p) for n, p in ((
@@ -190,6 +198,10 @@ class InfoWriter(QtCore.QObject):
                     filters = str(c.get('Filters','')).strip()
                     info_lines.append(f"{name} $\t{purpose} $\t{filters} $\t\t{newfull}")
                     camera_lines_added += 1
+                try:
+                    self.log.emit(f"InfoWriter: camera_lines_added after primary match = {camera_lines_added}")
+                except Exception:
+                    pass
             except Exception:
                 # fallback: attempt to match renamed by camera token (if provided separately)
                 try:
@@ -212,6 +224,11 @@ class InfoWriter(QtCore.QObject):
                 except Exception:
                     pass
 
+                try:
+                    self.log.emit(f"InfoWriter: camera_lines_added after fallback match = {camera_lines_added}")
+                except Exception:
+                    pass
+
                 # If no camera lines were added by the matching logic, add a robust fallback:
                 # include any renamed files that look like images with a best-effort name token.
                 try:
@@ -230,6 +247,8 @@ class InfoWriter(QtCore.QObject):
                                 continue
                 except Exception:
                     pass
+                try:
+                    self.log.emit(f"InfoWriter: camera_lines_added after final fallback = {camera_lines_added}")
                 except Exception:
                     pass
 
