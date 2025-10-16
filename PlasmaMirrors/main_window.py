@@ -452,10 +452,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             QtCore.QTimer.singleShot(0, lambda a=addr, u=unit: self.req_read.emit(a, u))
                         except Exception:
                             pass
-                        try:
-                            QtCore.QTimer.singleShot(0, lambda a=addr, u=unit: self.req_spd.emit(a, u))
-                        except Exception:
-                            pass
+                        
                         # request bounds shortly after to update limits
                         try:
                             QtCore.QTimer.singleShot(50, lambda a=addr, u=unit: self.req_bounds.emit(a, u))
