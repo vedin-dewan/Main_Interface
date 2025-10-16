@@ -88,9 +88,18 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.btn_fire.setStyleSheet("background:#D30000; color:white; font-weight:700;")
         g.addWidget(self.btn_fire, 3, 1, 1, 2)
 
+        # Sequence progress bar (hidden until a sequence starts)
+        self.seq_progress = QtWidgets.QProgressBar()
+        self.seq_progress.setMinimum(0)
+        self.seq_progress.setMaximum(100)
+        self.seq_progress.setValue(0)
+        self.seq_progress.setTextVisible(True)
+        self.seq_progress.setVisible(False)
+        g.addWidget(self.seq_progress, 4, 1, 1, 2)
+
         # Status line
         self.lab_status = QtWidgets.QLabel("Ready")
-        g.addWidget(self.lab_status, 4, 0, 1, 3)
+        g.addWidget(self.lab_status, 4, 0, 1, 1)
 
         # column stretch so the button gets space
         g.setColumnStretch(0, 1)
@@ -143,6 +152,31 @@ class FireControlsPanel(QtWidgets.QWidget):
             else:
                 # faded/disabled appearance
                 self.btn_fire.setStyleSheet("background:#444444; color:#9a9a9a; font-weight:600;")
+        except Exception:
+            pass
+
+    # helpers for sequence progress control
+    def set_sequence_active(self, active: bool, total_shots: int = 0):
+        try:
+            if active:
+                self.seq_progress.setVisible(True)
+                self.seq_progress.setMaximum(max(1, int(total_shots)))
+                self.seq_progress.setValue(0)
+                # visually fade the Fire button when active
+                self.btn_fire.setStyleSheet("background:#444444; color:#9a9a9a; font-weight:600;")
+                self.btn_fire.setEnabled(False)
+            else:
+                self.seq_progress.setVisible(False)
+                self.seq_progress.setValue(0)
+                # restore Fire button state per mode rules
+                self._update_fire_button_state()
+        except Exception:
+            pass
+
+    def set_sequence_progress(self, value: int):
+        try:
+            if self.seq_progress.isVisible():
+                self.seq_progress.setValue(int(value))
         except Exception:
             pass
 

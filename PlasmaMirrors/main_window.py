@@ -110,6 +110,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # track background write + auto-move state so we can control Fire button
         self._info_write_pending = False
         self._pending_auto_addresses = set()
+        # queued fire request when a sequence is active and user clicks Fire again
+        self._queued_fire_request = False
+        # per-shot run progress (shots completed within the current run)
+        self._per_shot_completed_in_run = 0
 
         # --- Info writer thread (background) ---
         try:
@@ -456,55 +460,25 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 mode = 'continuous'
 
-            # Single-mode: start a per-shot loop. The displayed counter is a cumulative tally
+            # Single-mode: start or queue a per-shot loop. The displayed counter is a cumulative tally
             # that is never auto-reset; it increments only after each shot's rename completes.
             if mode == 'single':
-                # don't allow overlapping sequences
+                # if a per-shot sequence is already active, queue this request to run when it finishes
                 if getattr(self, '_per_shot_active', False):
-                    try: self.status_panel.append_line('Per-shot sequence already running; ignoring Fire')
-                    except Exception: pass
-                    return
-
-                try:
-                    self._rename_experiment = (self.overall_controls.exp_edit.text() or 'Experiment').strip()
-                except Exception:
-                    self._rename_experiment = getattr(self, '_rename_experiment', 'Experiment')
-
-                try:
-                    shots = int(self.fire_panel.spin_shots.value()) if getattr(self.fire_panel, 'spin_shots', None) else getattr(self.fire_io, '_num_shots', 1)
-                except Exception:
-                    shots = getattr(self.fire_io, '_num_shots', 1)
-
-                # initialize per-shot counters; start from the current displayed tally
-                self._per_shot_active = True
-                self._per_shot_total = max(1, int(shots))
-                try:
-                    self._per_shot_current = int(self.fire_panel.disp_counter.value())
-                except Exception:
-                    self._per_shot_current = 0
-
-                # compute absolute target tally: stop when displayed counter reaches this value
-                try:
-                    self._per_shot_target = self._per_shot_current + int(self._per_shot_total)
-                except Exception:
-                    self._per_shot_target = self._per_shot_current + int(self._per_shot_total or 1)
-
-                # queue first one-shot in the worker
-                try:
-                    QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
-                    # disable Fire button while the shot and its post-processing runs
                     try:
-                        self._set_fire_button_enabled(False)
+                        # set queued flag so UI will start another sequence when current one fully finishes
+                        self._queued_fire_request = True
+                        self.status_panel.append_line('Per-shot sequence already running; queued a new sequence to start after completion')
                     except Exception:
                         pass
-                    try: self.status_panel.append_line(f"Per-shot start: current={self._per_shot_current}, total={self._per_shot_total}, target={getattr(self,'_per_shot_target',None)}")
+                    return
+
+                # otherwise start a new per-shot sequence
+                try:
+                    self._start_per_shot_sequence()
+                except Exception as e:
+                    try: self.status_panel.append_line(f'Failed to start per-shot sequence: {e}')
                     except Exception: pass
-                    try: self.status_panel.append_line("Queued first one-shot")
-                    except Exception: pass
-                except Exception:
-                    try: self.status_panel.append_line('Failed to queue first one-shot')
-                    except Exception: pass
-                    self._per_shot_active = False
                 return
 
             #Burst: forward to worker fire() which arms burst behavior
@@ -535,6 +509,60 @@ class MainWindow(QtWidgets.QMainWindow):
         # intentionally ignore shots_progress: UI tally is updated only after per-shot completion
         try:
             return
+        except Exception:
+            pass
+
+    def _start_per_shot_sequence(self):
+        """Initialize and queue the first shot of a per-shot sequence."""
+        try:
+            try:
+                self._rename_experiment = (self.overall_controls.exp_edit.text() or 'Experiment').strip()
+            except Exception:
+                self._rename_experiment = getattr(self, '_rename_experiment', 'Experiment')
+
+            try:
+                shots = int(self.fire_panel.spin_shots.value()) if getattr(self.fire_panel, 'spin_shots', None) else getattr(self.fire_io, '_num_shots', 1)
+            except Exception:
+                shots = getattr(self.fire_io, '_num_shots', 1)
+
+            # initialize per-shot counters; start from the current displayed tally
+            self._per_shot_active = True
+            self._per_shot_total = max(1, int(shots))
+            try:
+                self._per_shot_current = int(self.fire_panel.disp_counter.value())
+            except Exception:
+                self._per_shot_current = 0
+
+            # compute absolute target tally: stop when displayed counter reaches this value
+            try:
+                self._per_shot_target = self._per_shot_current + int(self._per_shot_total)
+            except Exception:
+                self._per_shot_target = self._per_shot_current + int(self._per_shot_total or 1)
+
+            # reset per-run completed counter and enable sequence progress UI
+            try:
+                self._per_shot_completed_in_run = 0
+                self.fire_panel.set_sequence_active(True, int(self._per_shot_total))
+                self.fire_panel.set_sequence_progress(0)
+            except Exception:
+                pass
+
+            # queue first one-shot in the worker
+            try:
+                QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                # disable Fire button while the shot and its post-processing runs
+                try:
+                    self._set_fire_button_enabled(False)
+                except Exception:
+                    pass
+                try: self.status_panel.append_line(f"Per-shot start: current={self._per_shot_current}, total={self._per_shot_total}, target={getattr(self,'_per_shot_target',None)}")
+                except Exception: pass
+                try: self.status_panel.append_line("Queued first one-shot")
+                except Exception: pass
+            except Exception:
+                try: self.status_panel.append_line('Failed to queue first one-shot')
+                except Exception: pass
+                self._per_shot_active = False
         except Exception:
             pass
 
@@ -582,6 +610,17 @@ class MainWindow(QtWidgets.QMainWindow):
         # If we are orchestrating per-shot and haven't finished, trigger the next shot
         if getattr(self, '_per_shot_active', False):
             self._per_shot_current += 1
+            # update per-run completed counter
+            try:
+                self._per_shot_completed_in_run += 1
+                # update progress bar UI if present
+                try:
+                    total = int(getattr(self, '_per_shot_total', 1))
+                    self.fire_panel.set_sequence_progress(int(min(self._per_shot_completed_in_run, total)))
+                except Exception:
+                    pass
+            except Exception:
+                pass
             # update display
             try: self.fire_panel.disp_counter.setValue(self._per_shot_current)
             except Exception: pass
@@ -610,6 +649,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
                 try: self.status_panel.append_line("Per-shot sequence complete")
                 except Exception: pass
+                # sequence fully complete (renames + info writer dispatched). If no pending autos
+                # and no info writes pending, re-enable Fire and start queued sequence if requested.
+                try:
+                    if not self._pending_auto_addresses and not getattr(self, '_info_write_pending', False):
+                        self._set_fire_button_enabled(True)
+                except Exception:
+                    pass
+                # if user queued another Fire while this run was active, start it now
+                try:
+                    if getattr(self, '_queued_fire_request', False):
+                        self._queued_fire_request = False
+                        QtCore.QTimer.singleShot(50, lambda: self._on_fire_clicked())
+                except Exception:
+                    pass
 
     def _rename_output_files(self, event_ts: float = None):
         # Delegate to file_renamer.rename_shot_files for maintainability and testability
@@ -920,7 +973,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fire_panel.btn_fire.setEnabled(bool(enabled) and allowed)
                 # reflect faded or active appearance
                 if bool(enabled) and allowed:
-                    self.fire_panel.btn_fire.setStyleSheet("background:#D30000; color:white; font-weight:700;")
+                        # hide sequence UI when re-enabling Fire (sequence finished)
+                        try:
+                            if getattr(self, 'fire_panel', None):
+                                self.fire_panel.set_sequence_active(False)
+                        except Exception:
+                            pass
+                        self.fire_panel.btn_fire.setStyleSheet("background:#D30000; color:white; font-weight:700;")
                 else:
                     self.fire_panel.btn_fire.setStyleSheet("background:#444444; color:#9a9a9a; font-weight:600;")
             except Exception:
