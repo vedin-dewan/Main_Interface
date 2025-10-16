@@ -47,7 +47,7 @@ class FireControlsPanel(QtWidgets.QWidget):
         g.addLayout(shots_row, 0, 1, 1, 2)
 
         # ----- Interval (ms) -----
-        lab_interval = QtWidgets.QLabel("Interval (ms):")
+        lab_interval = QtWidgets.QLabel("Camera Buffer (ms):")
         self.spin_interval = QtWidgets.QSpinBox()
         self.spin_interval.setRange(1, 1_000_000)  # 1 ms to 1000 s
         self.spin_interval.setValue(2000)           # default 2000 ms
@@ -59,6 +59,20 @@ class FireControlsPanel(QtWidgets.QWidget):
         interval_row.addWidget(self.spin_interval)
         interval_row.addStretch(1)
         g.addLayout(interval_row, 1, 1, 1, 2)
+
+        # ----- Post-Auto buffer (ms) -----
+        lab_post_auto = QtWidgets.QLabel("Post-Auto buffer (ms):")
+        self.spin_post_auto = QtWidgets.QSpinBox()
+        self.spin_post_auto.setRange(0, 10_000)
+        self.spin_post_auto.setValue(500)  # default 500 ms
+        self.spin_post_auto.setFixedWidth(100)
+        self.spin_post_auto.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+
+        post_auto_row = QtWidgets.QHBoxLayout()
+        post_auto_row.addWidget(lab_post_auto)
+        post_auto_row.addWidget(self.spin_post_auto)
+        post_auto_row.addStretch(1)
+        g.addLayout(post_auto_row, 1, 2, 1, 1)
 
         # ----- Shot Counter (read-only display) -----
         lab_counter = QtWidgets.QLabel("Shot Counter:")

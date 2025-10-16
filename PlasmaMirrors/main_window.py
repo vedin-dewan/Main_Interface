@@ -1097,12 +1097,17 @@ class MainWindow(QtWidgets.QMainWindow):
             # If we are waiting to start the next shot only after autos/info-writes, handle that first
             try:
                 if getattr(self, '_next_shot_when_ready', False):
-                    # If no info write and no pending autos, queue the next one-shot now
+                    # If no info write and no pending autos, queue the next one-shot after a short buffer
                     if not getattr(self, '_info_write_pending', False) and not self._pending_auto_addresses:
                         try:
                             self._next_shot_when_ready = False
-                            QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
-                            self.status_panel.append_line('Queued next one-shot after PM Auto completion')
+                            # wait post-auto buffer after moves complete before starting the next shot
+                            try:
+                                buffer_ms = int(getattr(self, 'fire_panel', None).spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 500
+                            except Exception:
+                                buffer_ms = 500
+                            QtCore.QTimer.singleShot(buffer_ms, lambda: QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection))
+                            self.status_panel.append_line(f'Queued next one-shot after PM Auto completion ({buffer_ms} ms buffer)')
                             return
                         except Exception:
                             pass
