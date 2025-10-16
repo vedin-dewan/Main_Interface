@@ -289,6 +289,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # thread-safe wiring
         self.req_read.connect(self.stage.read_position_speed, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.req_abs.connect(self.stage.move_absolute, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_bounds.connect(self.stage.get_limits, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_set_lbound.connect(self.stage.set_lower_limit, QtCore.Qt.ConnectionType.QueuedConnection)
         self.req_set_ubound.connect(self.stage.set_upper_limit, QtCore.Qt.ConnectionType.QueuedConnection)
