@@ -30,11 +30,12 @@ class MotorRow(QtWidgets.QWidget):
 
         self.lbl_units = QtWidgets.QLabel(self._fmt_units(self.info.eng_value, self.info.unit, rich=True))
         self.lbl_units.setTextFormat(QtCore.Qt.TextFormat.RichText)
-        self.lbl_units.setMinimumWidth(60)
+        # fixed width so long numeric values don't push the progress bar column
+        self.lbl_units.setFixedWidth(90)
 
         self.lbl_speed_units = QtWidgets.QLabel(self._fmt_units(self.info.speed, self.info.speed_unit, rich=True))
         self.lbl_speed_units.setTextFormat(QtCore.Qt.TextFormat.RichText)
-        self.lbl_speed_units.setMinimumWidth(60)
+        self.lbl_speed_units.setFixedWidth(90)
 
         self.bar = QtWidgets.QProgressBar()
         self.bar.setRange(0, 100)
@@ -47,7 +48,8 @@ class MotorRow(QtWidgets.QWidget):
         )
 
         self.lbl_steps = QtWidgets.QLabel(self._fmt_steps(self.info.steps))
-        self.lbl_steps.setMinimumWidth(100)
+        # keep steps column a fixed width to align progress bars
+        self.lbl_steps.setFixedWidth(100)
 
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(6, 2, 6, 2)
