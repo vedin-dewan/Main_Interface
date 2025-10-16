@@ -190,6 +190,24 @@ class InfoWriter(QtCore.QObject):
                     pass
                 cam_by_name = {str(c.get('Name','')).strip(): c for c in cameras if c.get('Name')}
                 camera_lines_added = 0
+                # Diagnostic: log tokens extracted from renamed files and membership in cam_by_name
+                try:
+                    try:
+                        keys = list(cam_by_name.keys())
+                        self.log.emit(f"InfoWriter: cam_by_name_keys={keys}")
+                    except Exception:
+                        pass
+                    for nm, p in renamed:
+                        try:
+                            if not p:
+                                continue
+                            token = os.path.basename(p).split('_')[0]
+                            present = token in cam_by_name
+                            self.log.emit(f"InfoWriter: renamed_token='{token}', in_cam_by_name={present}, newfull='{p}'")
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
                 for name, newfull in sorted(((n, p) for n, p in ((
                     (os.path.basename(p).split('_')[0], p) if p else (None, None)
                 ) for nm, p in renamed) if n in cam_by_name), key=lambda x: x[0]):
