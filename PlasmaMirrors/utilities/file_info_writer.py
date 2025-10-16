@@ -191,7 +191,7 @@ class InfoWriter(QtCore.QObject):
                 cam_by_name = {str(c.get('Name','')).strip(): c for c in cameras if c.get('Name')}
                 camera_lines_added = 0
                 for name, newfull in sorted(((n, p) for n, p in ((
-                    (os.path.basename(nm).split('_')[0], p) if p else (None, None)
+                    (os.path.basename(p).split('_')[0], p) if p else (None, None)
                 ) for nm, p in renamed) if n in cam_by_name), key=lambda x: x[0]):
                     c = cam_by_name.get(name, {})
                     purpose = str(c.get('Purpose','')).strip()
@@ -256,7 +256,7 @@ class InfoWriter(QtCore.QObject):
             try:
                 spec_by_token = {str(s.get('filename','')).strip(): s for s in spectrometers if s.get('filename')}
                 for token, newfull in sorted(((t, p) for t, p in ((
-                    (os.path.basename(nm).split('_')[0], p) if p else (None, None)
+                    (os.path.basename(p).split('_')[0], p) if p else (None, None)
                 ) for nm, p in renamed) if t in spec_by_token), key=lambda x: x[0]):
                     s = spec_by_token.get(token, {})
                     name = str(s.get('name','')).strip()
