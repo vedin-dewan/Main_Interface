@@ -128,7 +128,7 @@ class PMAutoManager:
                     else:
                         r = (float(zero_pos) - float(current_y))
 
-                    if abs(r) < 1e-6:
+                    if abs(r) < 1e-4:
                         self._log(f"PM Auto: computed r is zero for Circular target (zero_pos={zero_pos}, current={current_y}); skipping")
                         continue
 
@@ -178,10 +178,11 @@ class PMAutoManager:
 
                     intended_rx = None if rx_pos is None else (rx_pos + delta)
                     out_of_bounds_rx = False
+                    tol = 1e-4
                     if intended_rx is not None:
-                        if rx_min is not None and intended_rx < rx_min - 1e-6:
+                        if rx_min is not None and intended_rx < rx_min - tol:
                             out_of_bounds_rx = True
-                        if rx_max is not None and intended_rx > rx_max + 1e-6:
+                        if rx_max is not None and intended_rx > rx_max + tol:
                             out_of_bounds_rx = True
 
                     if out_of_bounds_rx:
@@ -259,10 +260,11 @@ class PMAutoManager:
 
                     intended_y = None if y_pos is None else (y_pos + y_delta)
                     out_of_bounds_y = False
+                    tol = 1e-4
                     if intended_y is not None:
-                        if y_min is not None and intended_y < y_min - 1e-6:
+                        if y_min is not None and intended_y < y_min - tol:
                             out_of_bounds_y = True
-                        if y_max is not None and intended_y > y_max + 1e-6:
+                        if y_max is not None and intended_y > y_max + tol:
                             out_of_bounds_y = True
 
                     if out_of_bounds_y:
@@ -300,14 +302,14 @@ class PMAutoManager:
     def check_bounds(self) -> List[Dict[str, Any]]:
         """Check stages for PM groups with Auto checked.
 
-        Returns a list of violation dicts with keys:
-          - pm_name
-          - row_label (RX/Y/Z/SD)
-          - address
-          - position
-          - min
-          - max
-          - relation ('below' or 'above')
+                Returns a list of violation dicts with keys:
+                    - pm_name
+                    - row_label (RX/Y/Z)
+                    - address
+                    - position
+                    - min
+                    - max
+                    - relation ('below' or 'above')
         """
         violations: List[Dict[str, Any]] = []
         if not hasattr(self, 'pm_panel') or self.pm_panel is None:
@@ -318,7 +320,9 @@ class PMAutoManager:
                 if not getattr(mg, 'auto', None) or not mg.auto.isChecked():
                     continue
                 pm_name = getattr(mg, 'name', None).text() if getattr(mg, 'name', None) else 'PM'
-                for row_label, row in (('RX', mg.row_rx), ('Y', mg.row_y), ('Z', mg.row_z), ('SD', mg.row_sd)):
+                # Only check the primary motion axes for PM auto: RX, Y and Z.
+                # Do not treat SD as a blocking axis for auto moves.
+                for row_label, row in (('RX', mg.row_rx), ('Y', mg.row_y), ('Z', mg.row_z)):
                     try:
                         addr = int(row.stage_num.value())
                     except Exception:
