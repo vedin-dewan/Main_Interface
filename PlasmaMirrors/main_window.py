@@ -1400,7 +1400,8 @@ class MainWindow(QtWidgets.QMainWindow):
             # Collect the visible final target to run after all pre-moves
             final_queue.append({'address': int(address), 'target': float(target_mm), 'home': False, 'hidden': False})
 
-        if not queue:
+        # If there are no pre-moves and no final moves, nothing to do
+        if not pre_queue and not final_queue:
             self.status_panel.append_line(f'Move-to-saved: nothing to do for "{preset_name}".')
             return
 
