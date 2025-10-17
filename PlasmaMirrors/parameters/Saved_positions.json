@@ -164,17 +164,17 @@
     ]
   },
   "Zero PM3": {
-    "last_saved_time": "2025-10-09T15:16:47",
+    "last_saved_time": "2025-10-17T10:56:54",
     "stages": [
       {
         "name": "PM3Y",
-        "position": 110.12,
+        "position": 110.12001328125001,
         "stage_num": 5,
         "order": 1
       },
       {
         "name": "PM3Z",
-        "position": 31.4169,
+        "position": 31.416922656249998,
         "stage_num": 6,
         "order": 2,
         "pre_moves": [
@@ -187,7 +187,7 @@
       },
       {
         "name": "PM3X",
-        "position": 28.5,
+        "position": 28.499990625000002,
         "stage_num": 14,
         "order": 3
       }

@@ -1,0 +1,61 @@
+Saved Positions Log - generated 2025-10-17 10:56:54
+
+Preset: HOME ALL
+  Last saved: 2025-10-09T16:53:35
+  - PM1R (stage_num=1) order=14 → 0.0
+  - PM1Y (stage_num=2) order=4 → 0.0
+  - PM1Z (stage_num=3) order=3 → 0.0
+  - PM1D (stage_num=4) order=2 → 0.0
+  - PM3Y (stage_num=5) order=13 → 0.0
+  - PM3Z (stage_num=6) order=11 → 0.0
+  - R2 (stage_num=7) order=15 → 0.0
+  - S1 (stage_num=0) order=5 → 0.0
+  - S2 (stage_num=9) order=6 → 0.0
+  - PM2D (stage_num=10) order=7 → 0.0
+  - PM2Y (stage_num=11) order=8 → 0.0
+  - PM2Z (stage_num=12) order=9 → 0.0
+  - PM2X (stage_num=13) order=10 → 0.0
+  - PM3X (stage_num=14) order=12 → 0.0
+  - S3 (stage_num=15) order=1 → 70.0
+  - PG (stage_num=16) order=16 → 0.0
+
+Preset: Last position
+  Last saved: 2025-10-09T15:16:47
+  - PM1R (stage_num=1) order=2 → 40.000078124999995
+  - S3 (stage_num=15) order=1 → 70.0
+
+Preset: Zero PM1
+  Last saved: 2025-10-09T15:16:47
+  - PM1R (stage_num=1) order=1 → 30.0
+  - PM1Y (stage_num=2) order=2 → 192.75
+  - PM1Z (stage_num=3) order=3 → 36.0
+
+Preset: Zero PM2
+  Last saved: 2025-10-09T15:16:47
+  - PM2Y (stage_num=11) order=2 → 93.3693
+  - PM2Z (stage_num=12) order=1 → 52.82
+  - PM2X (stage_num=13) order=3 → 70.13
+
+Preset: Zero PM3
+  Last saved: 2025-10-17T10:56:54
+  - PM3Y (stage_num=5) order=1 → 110.12001328125001
+  - PM3Z (stage_num=6) order=2 → 31.416922656249998
+  - PM3X (stage_num=14) order=3 → 28.499990625000002
+
+Preset: Microscope PM2
+  Last saved: 2025-10-09T15:16:47
+  - PM2Y (stage_num=11) order=2 → 73.782
+  - PM2Z (stage_num=12) order=1 → 52.8808
+  - PM2X (stage_num=13) order=3 → 36.3392
+
+Preset: Microscope PM3
+  Last saved: 2025-10-17T09:41:20
+  - PM3Y (stage_num=5) order=1 → 96.81815234375
+  - PM3Z (stage_num=6) order=2 → 43.998157812500004
+  - PM3X (stage_num=14) order=3 → 69.88968750000001
+
+Preset: Home PM3
+  Last saved: 2025-10-09T15:16:47
+  - PM3Y (stage_num=5) order=2 → 0
+  - PM3Z (stage_num=6) order=1 → 0
+  - PM3X (stage_num=14) order=3 → 0
