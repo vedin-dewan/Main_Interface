@@ -1337,7 +1337,8 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             ordered = stages
 
-        queue = []
+        pre_queue = []
+        final_queue = []
         for st in ordered:
             name = str(st.get("name", "")).strip()
             pos  = st.get("position", None)
@@ -1358,7 +1359,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.status_panel.append_line(f'  ↳ Skipping "{name}" (position not numeric).')
                 continue
 
-            # Expand optional pre_moves (executed before the visible final target)
+            # Expand optional pre_moves (executed before any final targets)
             pre_moves = st.get('pre_moves', []) or []
             for pm in pre_moves:
                 try:
@@ -1392,25 +1393,27 @@ class MainWindow(QtWidgets.QMainWindow):
                             pm_addr = getattr(prow, 'index', None)
                     if pm_addr is None:
                         continue
-                    queue.append({'address': int(pm_addr), 'target': pm_target, 'home': pm_home, 'hidden': pm_hidden})
+                    pre_queue.append({'address': int(pm_addr), 'target': pm_target, 'home': pm_home, 'hidden': pm_hidden})
                 except Exception:
                     continue
 
-            # Append the visible final target
-            queue.append({'address': int(address), 'target': float(target_mm), 'home': False, 'hidden': False})
+            # Collect the visible final target to run after all pre-moves
+            final_queue.append({'address': int(address), 'target': float(target_mm), 'home': False, 'hidden': False})
 
         if not queue:
             self.status_panel.append_line(f'Move-to-saved: nothing to do for "{preset_name}".')
             return
 
-        # Start queued execution
+        # Start queued execution: perform all pre_moves first, then all final targets
+        queue = pre_queue + final_queue
         self._saved_move_queue = queue
         self._saved_move_active = True
         try:
-            visible_count = sum(1 for q in queue if not q.get('hidden', False))
+            visible_count = sum(1 for q in final_queue if not q.get('hidden', False))
         except Exception:
-            visible_count = len(queue)
-        self.status_panel.append_line(f'Move-to-saved "{preset_name}": queued {visible_count} visible move(s) ({len(queue)} total incl. pre-moves).')
+            visible_count = len(final_queue)
+        total_count = len(queue)
+        self.status_panel.append_line(f'Move-to-saved "{preset_name}": queued {visible_count} visible move(s) ({total_count} total incl. pre-moves).')
         self._dequeue_and_move_next()
 
     def _dequeue_and_move_next(self):
