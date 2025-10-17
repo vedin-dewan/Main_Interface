@@ -995,6 +995,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     entries = []
 
+                # diagnostic: log how many files we saw this poll
+                try:
+                    if entries:
+                        try: self.status_panel.append_line(f"Burst save: scanning {len(entries)} file(s) in outdir")
+                        except Exception: pass
+                except Exception:
+                    pass
+
                 now = time.time()
                 for fname in entries:
                     full = os.path.join(outdir, fname)
@@ -1018,6 +1026,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                 candidates.setdefault(i, []).append(full)
                                 last_size[full] = -1
                                 stable_since[full] = None
+                                try: self.status_panel.append_line(f"Burst save: found candidate for token '{toks[i]}' -> {fname}")
+                                except Exception: pass
                             # check stability
                             try:
                                 cur_size = os.path.getsize(full)
@@ -1030,6 +1040,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                     # mark as stable if not already recorded
                                     if full not in stable_found.get(i, []):
                                         stable_found.setdefault(i, []).append(full)
+                                        try: self.status_panel.append_line(f"Burst save: file stable for token '{toks[i]}' -> {fname}")
+                                        except Exception: pass
                             else:
                                 last_size[full] = cur_size
                                 stable_since[full] = None
