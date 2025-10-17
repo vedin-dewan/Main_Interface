@@ -122,7 +122,7 @@
     "stages": [
       {
         "name": "PM1R",
-        "position":30.00,
+        "position": 30.0,
         "stage_num": 1,
         "order": 1
       },
@@ -134,7 +134,7 @@
       },
       {
         "name": "PM1Z",
-        "position": 36.00,
+        "position": 36.0,
         "stage_num": 3,
         "order": 3
       }
@@ -145,13 +145,13 @@
     "stages": [
       {
         "name": "PM2Y",
-        "position":93.3693,
+        "position": 93.3693,
         "stage_num": 11,
         "order": 2
       },
       {
         "name": "PM2Z",
-        "position": 52.8200,
+        "position": 52.82,
         "stage_num": 12,
         "order": 1
       },
@@ -168,7 +168,7 @@
     "stages": [
       {
         "name": "PM3Y",
-        "position":110.12,
+        "position": 110.12,
         "stage_num": 5,
         "order": 1
       },
@@ -178,12 +178,16 @@
         "stage_num": 6,
         "order": 2,
         "pre_moves": [
-          { "name": "PM3Z", "home": true, "hidden": true }
+          {
+            "name": "PM3Z",
+            "home": true,
+            "hidden": true
+          }
         ]
       },
       {
         "name": "PM3X",
-        "position": 28.50,
+        "position": 28.5,
         "stage_num": 14,
         "order": 3
       }
@@ -194,7 +198,7 @@
     "stages": [
       {
         "name": "PM2Y",
-        "position": 73.7820,
+        "position": 73.782,
         "stage_num": 11,
         "order": 2
       },
@@ -210,34 +214,36 @@
         "stage_num": 13,
         "order": 3
       }
-        
     ]
   },
   "Microscope PM3": {
-    "last_saved_time": "2025-10-09T15:16:47",
+    "last_saved_time": "2025-10-17T09:41:20",
     "stages": [
       {
         "name": "PM3Y",
-        "position": 96.8182,
+        "position": 96.81815234375,
         "stage_num": 5,
         "order": 1
       },
       {
         "name": "PM3Z",
-        "position": 43.9982,
+        "position": 43.998157812500004,
         "stage_num": 6,
         "order": 2,
         "pre_moves": [
-          { "name": "PM3Z", "home": true, "hidden": true }
+          {
+            "name": "PM3Z",
+            "home": true,
+            "hidden": true
+          }
         ]
       },
       {
         "name": "PM3X",
-        "position": 69.8897,
+        "position": 69.88968750000001,
         "stage_num": 14,
         "order": 3
       }
-        
     ]
   },
   "Home PM3": {
@@ -261,7 +267,6 @@
         "stage_num": 14,
         "order": 3
       }
-        
     ]
   }
 }
