@@ -46,7 +46,6 @@ class FireConfig:
     pulse_ms: int = 200                           # high time per shot
     gap_ms: int = 200                             # low time between shots
     single_waits_for_edge: bool = True            # if True: start train at next falling edge
-    debug: bool = False                           # enable lightweight diagnostics (no spam)
 
 
 class KinesisFireIO(QtCore.QObject):
@@ -95,10 +94,6 @@ class KinesisFireIO(QtCore.QObject):
         self._single_remaining: int = 0
         # one-shot state
         self._one_shot_active = False
-        # lightweight diagnostics: only enabled if cfg.debug True
-        # _diag_last_state tracks (last, val, armed) so we only emit logs on state change
-        self._diag_enabled = bool(getattr(self.cfg, 'debug', False))
-        self._diag_last_state = (None, None, False)
     # one-shot state complete
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
@@ -285,17 +280,34 @@ class KinesisFireIO(QtCore.QObject):
                 try: self._write_outputs(1, 1 - val, 1 - val)
                 except Exception: pass
 
-            # Diagnostic: emit a single concise line when arming (only if enabled)
-            if getattr(self, '_diag_enabled', False):
-                try:
-                    self.log.emit(f"fire(): mode={self._mode}, read_val={repr(val)}, last_trig={repr(self._last_trig)}")
-                except Exception:
-                    pass
         except Exception:
             pass
-        # Mark armed after we've initialized last_trig and outputs so tick sees consistent state
-        self._fire_requested = True
-        self.status.emit(f"Armed ({self._mode})")
+        # Mark armed after we've initialized last_trig and outputs so tick sees consistent state.
+        # Use a short deferred arm to avoid races where _tick runs between initializing
+        # _last_trig/outputs and setting the armed flag. The delay is half the poll period
+        # (minimum 1 ms) which is small but lets the event loop process ordering reliably.
+        try:
+            delay_ms = max(1, int((self.cfg.poll_period_s * 1000) / 2))
+            def _set_armed():
+                try:
+                    self._fire_requested = True
+                except Exception:
+                    pass
+                try:
+                    self.status.emit(f"Armed ({self._mode})")
+                except Exception:
+                    pass
+            QtCore.QTimer.singleShot(delay_ms, _set_armed)
+        except Exception:
+            # fallback: set immediately
+            try:
+                self._fire_requested = True
+            except Exception:
+                pass
+            try:
+                self.status.emit(f"Armed ({self._mode})")
+            except Exception:
+                pass
 
     # ---------- internals ----------
     def _discover_serials(self) -> list[str]:
@@ -503,21 +515,6 @@ class KinesisFireIO(QtCore.QObject):
         last = self._last_trig
         falling = (last == 1 and val == 0)
 
-        # Diagnostics: emit only on state changes to avoid spamming the log
-        if getattr(self, '_diag_enabled', False):
-            try:
-                curr = (last, val, bool(self._fire_requested))
-                if curr != getattr(self, '_diag_last_state', (None, None, False)):
-                    try:
-                        self.log.emit(f"_tick(): last={repr(last)}, val={repr(val)}, falling={falling}, armed={self._fire_requested}, burst_count={self._burst_count}")
-                    except Exception:
-                        pass
-                    try:
-                        self._diag_last_state = curr
-                    except Exception:
-                        pass
-            except Exception:
-                pass
 
         if self._mode == "continuous":
             self._set_mode_internal("manual")

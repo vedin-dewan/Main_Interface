@@ -265,18 +265,9 @@ class MainWindow(QtWidgets.QMainWindow):
             input_trigger="Dev1/PFI0",
             poll_period_s=0.02,
             start_enabled=False,
-            debug=True,
         )
         self.fire_io = KinesisFireIO(cfg)
         self.fire_io.moveToThread(self.fire_thread)
-
-        # If debug was enabled, let the user know in the status panel (non-spammy)
-        try:
-            if getattr(cfg, 'debug', False):
-                try: self.status_panel.append_line('Fire I/O diagnostics enabled')
-                except Exception: pass
-        except Exception:
-            pass
 
         # start/stop lifecycle
         self.fire_thread.started.connect(self.fire_io.open)
