@@ -84,7 +84,7 @@ class KinesisFireIO(QtCore.QObject):
 
         # runtime state
         self._mode: str = "single"         # "continuous" | "single" | "burst"
-        self._num_shots: int = 10
+        self._num_shots: int = 1
         self._fire_requested: bool = False
         self._burst_count: int = 0
         self._last_trig: Optional[int] = None
@@ -260,13 +260,18 @@ class KinesisFireIO(QtCore.QObject):
             self._start_single_sequence(self._num_shots)
             return
         # Otherwise, arm and let _tick handle edge detection / burst counting.
-        self._fire_requested = True
         self._burst_count = 0
         self.shots_progress.emit(0, self._num_shots)
-        # Arm state: ensure outputs reflect the armed condition immediately so the shutter
-        # is enabled without waiting for the next poll tick (avoids missed audible click).
+        # Read the current trigger and set last_trig so the worker can detect a future
+        # falling edge correctly (prevents missed first edge when arming).
         try:
             val = self._read_trigger()
+            try:
+                self._last_trig = val
+            except Exception:
+                pass
+            # Arm state: ensure outputs reflect the armed condition immediately so the shutter
+            # is enabled without waiting for the next poll tick (avoids missed audible click).
             if val is None:
                 # safe default: enable shutter, leave cameras/spec lines low
                 try: self._write_outputs(1, 0, 0)
@@ -276,6 +281,8 @@ class KinesisFireIO(QtCore.QObject):
                 except Exception: pass
         except Exception:
             pass
+        # Mark armed after we've initialized last_trig and outputs so tick sees consistent state
+        self._fire_requested = True
         self.status.emit(f"Armed ({self._mode})")
 
     # ---------- internals ----------
