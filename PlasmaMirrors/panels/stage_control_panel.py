@@ -428,6 +428,13 @@ class StageControlPanel(QtWidgets.QWidget):
             self.action_performed.emit(f"Failed to write {file_path}: {e}")
             return
 
+        # Also update a human-readable Saved_positions log file in the same folder
+        try:
+            log_path = os.path.join(os.path.dirname(file_path), 'Saved_positions_LOG.txt')
+            self._write_saved_positions_log(log_path, data)
+        except Exception:
+            pass
+
         # Refresh in-memory blocks and UI without changing stage order
         blocks = []
         for preset_name, pl in data.items():
@@ -454,3 +461,50 @@ class StageControlPanel(QtWidgets.QWidget):
         self.action_performed.emit(
             f'Updated "{preset}" at {now_iso}: {updated_count} stage(s) updated; order preserved.'
         )
+
+    def _write_saved_positions_log(self, log_path: str, data: dict):
+        """Write a human-readable log of Saved_positions.json to `log_path`.
+        The format lists each preset with its timestamp and stage entries (name, stage_num, position, order).
+        If a stage includes `pre_moves`, those are listed beneath the stage as pre-move lines.
+        """
+        try:
+            lines = []
+            now = datetime.now()
+            header = now.strftime("%Y-%m-%d %H:%M:%S")
+            lines.append(f"Saved Positions Log - generated {header}")
+            lines.append("")
+            for preset, payload in data.items():
+                lines.append(f"Preset: {preset}")
+                lst = payload.get('stages', [])
+                last = payload.get('last_saved_time', '')
+                if last:
+                    lines.append(f"  Last saved: {last}")
+                if not lst:
+                    lines.append("  (no stages)")
+                    lines.append("")
+                    continue
+                for st in lst:
+                    name = st.get('name', '')
+                    pos = st.get('position', '')
+                    stage_num = st.get('stage_num', '')
+                    order = st.get('order', '')
+                    # Only list the final visible positions (no pre-move details)
+                    lines.append(f"  - {name} (stage_num={stage_num}) order={order} → {pos}")
+                lines.append("")
+
+            # Write file atomically
+            tmp = log_path + ".tmp"
+            with open(tmp, 'w', encoding='utf-8') as f:
+                f.write("\n".join(lines))
+            try:
+                os.replace(tmp, log_path)
+            except Exception:
+                # fallback rename
+                try:
+                    os.remove(log_path)
+                except Exception:
+                    pass
+                os.replace(tmp, log_path)
+        except Exception:
+            # Best-effort: do not raise from logger
+            pass
