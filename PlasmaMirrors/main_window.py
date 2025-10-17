@@ -497,6 +497,14 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 mode = 'continuous'
 
+            # Ensure the fire worker receives the current mode before we queue any fire() calls.
+            # This avoids a race where a UI-mode toggle queued set_mode after a queued fire(),
+            # leaving the worker still in the previous mode when fire() runs.
+            try:
+                QtCore.QMetaObject.invokeMethod(self.fire_io, 'set_mode', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(str, mode))
+            except Exception:
+                pass
+
             # Pre-fire checks: output dir & experiment name for single or burst modes
             try:
                 if mode in ('single', 'burst'):
