@@ -1405,8 +1405,73 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status_panel.append_line(f'Move-to-saved: nothing to do for "{preset_name}".')
             return
 
+        # Build combined queue for execution (pre_moves first)
+        combined_queue = pre_queue + final_queue
+
+        # --- Confirmation dialog: show current and target positions for all moves ---
+        try:
+            from PyQt6.QtWidgets import QMessageBox
+            # Build lines describing each move in order
+            lines = []
+            idx = 1
+            for ent in combined_queue:
+                try:
+                    addr = int(ent.get('address'))
+                    # obtain row and current position
+                    row = None
+                    try:
+                        if 1 <= addr <= len(self.part1.rows):
+                            row = self.part1.rows[addr - 1]
+                    except Exception:
+                        row = None
+                    label = getattr(row.info, 'short', f'Addr{addr}') if row is not None else f'Addr{addr}'
+                    unit = getattr(row.info, 'unit', 'mm') if row is not None else 'mm'
+                    cur = None
+                    try:
+                        cur = float(getattr(row.info, 'eng_value', 0.0))
+                    except Exception:
+                        cur = None
+                    if ent.get('home', False) or (ent.get('target', None) is None and ent.get('home', False)):
+                        target_str = 'HOME'
+                    else:
+                        t = ent.get('target', None)
+                        try:
+                            target_str = f"{float(t):.6f} {unit}"
+                        except Exception:
+                            target_str = str(t)
+                    if cur is None:
+                        cur_str = 'unknown'
+                    else:
+                        # choose precision based on unit
+                        prec = 2 if unit == 'deg' else 3
+                        cur_str = f"{cur:.{prec}f} {unit}"
+                    hidden_tag = ' (pre-move)' if ent.get('hidden', False) else ''
+                    lines.append(f"{idx}. {label} (Addr {addr}): {cur_str} → {target_str}{hidden_tag}")
+                    idx += 1
+                except Exception:
+                    continue
+
+            msg = "About to perform the following moves (in order):\n\n" + "\n".join(lines)
+            mb = QMessageBox(self)
+            mb.setIcon(QMessageBox.Icon.Warning)
+            mb.setWindowTitle('Confirm Move-to-Saved')
+            mb.setText('Move-to-Saved: confirmation')
+            mb.setInformativeText(msg)
+            mb.setStandardButtons(QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Ok)
+            mb.setDefaultButton(QMessageBox.StandardButton.Ok)
+            resp = mb.exec()
+            if resp == QMessageBox.StandardButton.Cancel:
+                try:
+                    self.status_panel.append_line('Move-to-saved cancelled by user')
+                except Exception:
+                    pass
+                return
+        except Exception:
+            # If dialog fails for any reason, continue without confirmation
+            pass
+
         # Start queued execution: perform all pre_moves first, then all final targets
-        queue = pre_queue + final_queue
+        queue = combined_queue
         self._saved_move_queue = queue
         self._saved_move_active = True
         try:
