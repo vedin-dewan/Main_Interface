@@ -1329,10 +1329,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.status_panel.append_line(f'Move-to-saved: preset "{preset_name}" has no stages.')
             return
 
-        # Build an ordered queue: [(address, target_mm), ...]
-        # Map stage 'name' to our Part1 rows by row.info.short and take row.index as address.
+        # Build an ordered queue. Support optional per-stage 'pre_moves' which are
+        # executed before the visible final position. Queue entries are dicts:
+        #   { 'address': int, 'target': float|None, 'home': bool, 'hidden': bool }
         try:
-            # keep defined order field; default to large if missing
             ordered = sorted(stages, key=lambda s: s.get("order", 10**9))
         except Exception:
             ordered = stages
@@ -1357,7 +1357,47 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 self.status_panel.append_line(f'  ↳ Skipping "{name}" (position not numeric).')
                 continue
-            queue.append((address, target_mm))
+
+            # Expand optional pre_moves (executed before the visible final target)
+            pre_moves = st.get('pre_moves', []) or []
+            for pm in pre_moves:
+                try:
+                    pm_addr = None
+                    pm_home = False
+                    pm_target = None
+                    pm_hidden = True
+                    if isinstance(pm, dict):
+                        if 'address' in pm:
+                            try:
+                                pm_addr = int(pm.get('address'))
+                            except Exception:
+                                pm_addr = None
+                        if pm_addr is None and 'name' in pm:
+                            pname = str(pm.get('name', '')).strip()
+                            prow = next((r for r in self.part1.rows if r.info.short == pname), None)
+                            if prow is not None:
+                                pm_addr = getattr(prow, 'index', None)
+                        pm_home = bool(pm.get('home', False))
+                        if 'position' in pm:
+                            try:
+                                pm_target = float(pm.get('position'))
+                            except Exception:
+                                pm_target = None
+                        pm_hidden = bool(pm.get('hidden', True))
+                    else:
+                        # simple string entry = name
+                        pname = str(pm).strip()
+                        prow = next((r for r in self.part1.rows if r.info.short == pname), None)
+                        if prow is not None:
+                            pm_addr = getattr(prow, 'index', None)
+                    if pm_addr is None:
+                        continue
+                    queue.append({'address': int(pm_addr), 'target': pm_target, 'home': pm_home, 'hidden': pm_hidden})
+                except Exception:
+                    continue
+
+            # Append the visible final target
+            queue.append({'address': int(address), 'target': float(target_mm), 'home': False, 'hidden': False})
 
         if not queue:
             self.status_panel.append_line(f'Move-to-saved: nothing to do for "{preset_name}".')
@@ -1366,7 +1406,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Start queued execution
         self._saved_move_queue = queue
         self._saved_move_active = True
-        self.status_panel.append_line(f'Move-to-saved "{preset_name}": queued {len(queue)} move(s).')
+        try:
+            visible_count = sum(1 for q in queue if not q.get('hidden', False))
+        except Exception:
+            visible_count = len(queue)
+        self.status_panel.append_line(f'Move-to-saved "{preset_name}": queued {visible_count} visible move(s) ({len(queue)} total incl. pre-moves).')
         self._dequeue_and_move_next()
 
     def _dequeue_and_move_next(self):
@@ -1377,26 +1421,47 @@ class MainWindow(QtWidgets.QMainWindow):
             self._saved_move_active = False
             self.status_panel.append_line("Move-to-saved: sequence complete.")
             return
-        address, target_pos = self._saved_move_queue.pop(0)
+        entry = self._saved_move_queue.pop(0)
+        # support both legacy tuple entries and new dict entries
+        if isinstance(entry, dict):
+            address = int(entry.get('address'))
+            target_pos = entry.get('target', None)
+            is_home = bool(entry.get('home', False))
+            hidden = bool(entry.get('hidden', False))
+        else:
+            try:
+                address, target_pos = entry
+            except Exception:
+                self.status_panel.append_line(f"Move-to-saved: invalid queue entry {entry}; skipping")
+                QtCore.QTimer.singleShot(0, self._dequeue_and_move_next)
+                return
+            is_home = (float(target_pos) == 0.0)
+            hidden = False
+
         unit = self.part1.rows[address - 1].info.unit
         try:
-            if target_pos == 0.0:
+            if is_home or (target_pos is not None and float(target_pos) == 0.0):
                 # Queue a home request on the Stage I/O thread
-                self.status_panel.append_line(f" → Queuing HOME for Address {address} (0.0)")
+                if not hidden:
+                    self.status_panel.append_line(f" → Queuing HOME for Address {address} (0.0)")
                 try:
                     self.req_home.emit(address)
                 except Exception:
                     # fallback: try invoking on the worker (best-effort non-blocking)
-                    try: QtCore.QMetaObject.invokeMethod(self.stage, 'home', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, address))
-                    except Exception: pass
+                    try:
+                        QtCore.QMetaObject.invokeMethod(self.stage, 'home', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, address))
+                    except Exception:
+                        pass
             else:
                 # Queue an absolute move on the Stage I/O thread
-                self.status_panel.append_line(f" → Queuing move Address {address} to {target_pos:.6f} {unit}")
+                if not hidden:
+                    self.status_panel.append_line(f" → Queuing move Address {address} to {float(target_pos):.6f} {unit}")
                 try:
                     self.req_abs.emit(address, float(target_pos), unit)
                 except Exception:
                     # fallback: invoke via queued connection to avoid blocking UI
-                    try: QtCore.QMetaObject.invokeMethod(self.stage, 'move_absolute', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, address), QtCore.Q_ARG(float, float(target_pos)), QtCore.Q_ARG(str, unit))
+                    try:
+                        QtCore.QMetaObject.invokeMethod(self.stage, 'move_absolute', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, address), QtCore.Q_ARG(float, float(target_pos)), QtCore.Q_ARG(str, unit))
                     except Exception:
                         pass
         except Exception as e:

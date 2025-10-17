@@ -176,7 +176,10 @@
         "name": "PM3Z",
         "position": 31.4169,
         "stage_num": 6,
-        "order": 2
+        "order": 2,
+        "pre_moves": [
+          { "name": "PM3Z", "home": true, "hidden": true }
+        ]
       },
       {
         "name": "PM3X",
@@ -223,7 +226,10 @@
         "name": "PM3Z",
         "position": 43.9982,
         "stage_num": 6,
-        "order": 2
+        "order": 2,
+        "pre_moves": [
+          { "name": "PM3Z", "home": true, "hidden": true }
+        ]
       },
       {
         "name": "PM3X",
