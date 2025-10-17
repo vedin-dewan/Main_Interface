@@ -515,16 +515,20 @@ class StageControlPanel(QtWidgets.QWidget):
             pass
 
     def _append_saved_positions_log(self, log_path: str, preset_name: str, payload: dict):
-        """Append one row per stage to the Saved_positions_LOG.txt.
-        Format (CSV): Preset,Date,Time,Stage,Position,Order
-        Each call appends N rows (N = number of stages in payload) so history is preserved.
+        """Append a single row for this preset to Saved_positions_LOG.txt.
+
+        Row format (double-space separated):
+        Preset  Date  Time  Addr1  Abbr1  Pos1  Order1  Addr2  Abbr2  Pos2  Order2 ...
+
+        Stages are ordered by their numeric address (`stage_num`). A dynamic
+        header line matching the columns for this row is written only when the
+        file does not yet exist.
         """
         try:
             # determine timestamp: prefer payload['last_saved_time'] in ISO, else now
             ts = payload.get('last_saved_time') if isinstance(payload.get('last_saved_time'), str) else None
             if ts:
                 try:
-                    # try parsing ISO-like timestamp
                     dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S")
                 except Exception:
                     try:
@@ -536,24 +540,49 @@ class StageControlPanel(QtWidgets.QWidget):
             date_str = dt.strftime("%Y-%m-%d")
             time_str = dt.strftime("%H:%M:%S")
 
-            header = "Preset,Date,Time,Stage,Position,Order"
-            write_header = not os.path.exists(log_path)
+            stages = payload.get('stages', []) or []
+            # sort by stage_num (address); missing stage_num sorts to the end
+            def _addr_key(s):
+                try:
+                    return int(s.get('stage_num'))
+                except Exception:
+                    return 10**9
 
-            # Build lines
-            lines = []
-            for st in payload.get('stages', []):
-                name = st.get('name', '')
+            stages_sorted = sorted(stages, key=_addr_key)
+
+            # Build header dynamically for this payload (only if file missing)
+            header_fields = ["Preset", "Date", "Time"]
+            for i, st in enumerate(stages_sorted, start=1):
+                header_fields.extend([
+                    f"Addr{i}",
+                    f"Abbr{i}",
+                    f"Pos{i}",
+                    f"Order{i}",
+                ])
+            header_line = "  ".join(header_fields)
+
+            # Build the data row
+            row_fields = [str(preset_name), date_str, time_str]
+            for st in stages_sorted:
+                addr = st.get('stage_num', '')
+                abbr = st.get('name', '')
                 pos = st.get('position', '')
                 order = st.get('order', '')
-                # Ensure comma-separated and safe string conversion
-                line = f"{preset_name},{date_str},{time_str},{name},{pos},{order}"
-                lines.append(line)
+                # format numbers: positions as floats with 6 decimals if numeric
+                try:
+                    pos = f"{float(pos):.6f}"
+                except Exception:
+                    pos = str(pos)
+                row_fields.extend([str(addr), str(abbr), pos, str(order)])
 
-            # Append to file
+            line = "  ".join(row_fields)
+
+            write_header = not os.path.exists(log_path)
+            # Append atomically by writing then flushing
             with open(log_path, 'a', encoding='utf-8') as f:
                 if write_header:
-                    f.write(header + "\n")
-                for L in lines:
-                    f.write(L + "\n")
+                    f.write(header_line + "\n")
+                f.write(line + "\n")
         except Exception:
+            # Don't let logging break saving flow
             pass
