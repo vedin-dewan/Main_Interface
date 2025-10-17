@@ -1,7 +1,7 @@
 {
   "pm1": {
     "name": "Plasma Mirror 1",
-    "auto": true,
+    "auto": false,
     "dist": 0.75,
     "target_type": 0,
     "bypass": false,
@@ -91,7 +91,7 @@
   },
   "pm3": {
     "name": "Plasma Mirror 3",
-    "auto": true,
+    "auto": false,
     "dist": 0.75,
     "target_type": 1,
     "bypass": false,
@@ -134,5 +134,5 @@
       }
     }
   },
-  "saved_time": "2025-10-17T15:19:45"
+  "saved_time": "2025-10-17T16:42:16"
 }
