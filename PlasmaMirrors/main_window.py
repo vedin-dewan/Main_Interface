@@ -1032,51 +1032,66 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot(int, float)
     def _on_moved(self, address: int, final_pos: float):
-        row = self.part1.rows[address - 1]
-        unit = row.info.unit
-        prec = 2 if unit == "deg" else 6
-        self.status_panel.append_line(
-            f"Move complete on Address {address}: {final_pos:.{prec}f} {unit} (reading back...)"
-        )
-        self.req_read.emit(address, unit)
-        # Update PM panel Act. indicator only when a move completes
+        # Protect the handler so any unexpected errors don't prevent saved-move continuation.
         try:
-            if hasattr(self, 'pm_panel') and self.pm_panel is not None:
-                try:
-                    self.pm_panel.set_act_indicator_by_address(address, final_pos)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # if this address was a pending bypass move, flip the bypass button visual for that PM
-        try:
-            pm_index = self._pending_bypass_moves.pop(int(address), None)
-            if pm_index is not None:
-                try:
-                    mg = [self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3][pm_index - 1]
-                    # toggle the visual engaged state
-                    new_state = not mg.bypass.is_engaged()
-                    mg.bypass.set_engaged(new_state)
-                    self.status_panel.append_line(f"PM{pm_index} bypass visual updated after move → {'ENGAGE' if new_state else 'BYPASS'}")
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # if this address was a pending auto move, clear and possibly re-enable Fire
-        try:
-            if int(address) in getattr(self, '_pending_auto_addresses', set()):
-                try:
-                    self._pending_auto_addresses.discard(int(address))
-                except Exception:
-                    pass
-                try:
-                    # After a moved event, attempt to finish the overall sequence (may start queued run)
-                    self._try_finish_sequence()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # If a Move-to-Saved sequence is active, continue to the next queued move now
+            row = self.part1.rows[address - 1]
+            unit = row.info.unit
+            prec = 2 if unit == "deg" else 6
+            self.status_panel.append_line(
+                f"Move complete on Address {address}: {final_pos:.{prec}f} {unit} (reading back...)"
+            )
+            # Request a fresh read for this address
+            try:
+                self.req_read.emit(address, unit)
+            except Exception:
+                pass
+
+            # Update PM panel Act. indicator only when a move completes
+            try:
+                if hasattr(self, 'pm_panel') and self.pm_panel is not None:
+                    try:
+                        self.pm_panel.set_act_indicator_by_address(address, final_pos)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # if this address was a pending bypass move, flip the bypass button visual for that PM
+            try:
+                pm_index = self._pending_bypass_moves.pop(int(address), None)
+                if pm_index is not None:
+                    try:
+                        mg = [self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3][pm_index - 1]
+                        # toggle the visual engaged state
+                        new_state = not mg.bypass.is_engaged()
+                        mg.bypass.set_engaged(new_state)
+                        self.status_panel.append_line(f"PM{pm_index} bypass visual updated after move → {'ENGAGE' if new_state else 'BYPASS'}")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # if this address was a pending auto move, clear and possibly re-enable Fire
+            try:
+                if int(address) in getattr(self, '_pending_auto_addresses', set()):
+                    try:
+                        self._pending_auto_addresses.discard(int(address))
+                    except Exception:
+                        pass
+                    try:
+                        # After a moved event, attempt to finish the overall sequence (may start queued run)
+                        self._try_finish_sequence()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception as e:
+            # Log unexpected handler exceptions but keep going — important so sequences don't stall
+            try:
+                self.status_panel.append_line(f"_on_moved handler exception: {e}")
+            except Exception:
+                pass
+        # Regardless of handler success, if a Move-to-Saved sequence is active, continue to the next queued move now
         try:
             if getattr(self, '_saved_move_active', False):
                 # schedule a small delay so the readback and UI update can occur first
@@ -1245,6 +1260,18 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(250, lambda a=address: (
                 None if not (hasattr(self, 'pm_panel') and hasattr(self, 'part1')) else self.pm_panel.set_act_indicator_by_address(a, float(self.part1.rows[a - 1].info.eng_value))
             ))
+        except Exception:
+            pass
+        # If a Move-to-Saved sequence is active, continue to the next queued move now
+        try:
+            if getattr(self, '_saved_move_active', False):
+                try:
+                    QtCore.QTimer.singleShot(50, self._dequeue_and_move_next)
+                except Exception:
+                    try:
+                        self._dequeue_and_move_next()
+                    except Exception:
+                        pass
         except Exception:
             pass
 
