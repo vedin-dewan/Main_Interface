@@ -46,6 +46,7 @@ class FireConfig:
     pulse_ms: int = 200                           # high time per shot
     gap_ms: int = 200                             # low time between shots
     single_waits_for_edge: bool = True            # if True: start train at next falling edge
+    shutter_pulse_ms: int = 50                    # mechanical shutter pulse per shot (ms)
 
 
 class KinesisFireIO(QtCore.QObject):
@@ -94,7 +95,9 @@ class KinesisFireIO(QtCore.QObject):
         self._single_remaining: int = 0
         # one-shot state
         self._one_shot_active = False
-    # one-shot state complete
+        # kinesis pulse helper state
+        self._kinesis_pulse_active = False
+        # one-shot state complete
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
     @QtCore.pyqtSlot()
@@ -519,6 +522,30 @@ class KinesisFireIO(QtCore.QObject):
                 else:
                     self._write_outputs(1, 1 - val, 1 - val)
                 if falling:
+                    # Pulse the Kinesis shutter briefly to guarantee a mechanical click
+                    try:
+                        # Avoid re-entrancy if a pulse is already scheduled
+                        if not getattr(self, '_kinesis_pulse_active', False):
+                            self._kinesis_pulse_active = True
+                            try:
+                                self._set_shutter_on()
+                            except Exception:
+                                pass
+                            # schedule shutter off after configured ms
+                            def _end_pulse():
+                                try:
+                                    self._set_shutter_off()
+                                except Exception:
+                                    pass
+                                try:
+                                    self._kinesis_pulse_active = False
+                                except Exception:
+                                    pass
+
+                            QtCore.QTimer.singleShot(max(1, int(self.cfg.shutter_pulse_ms)), _end_pulse)
+                    except Exception:
+                        pass
+
                     self._burst_count += 1
                     self.shots_progress.emit(self._burst_count, self._num_shots)
                     if self._burst_count >= self._num_shots:
