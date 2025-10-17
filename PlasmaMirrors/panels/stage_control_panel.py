@@ -428,10 +428,18 @@ class StageControlPanel(QtWidgets.QWidget):
             self.action_performed.emit(f"Failed to write {file_path}: {e}")
             return
 
-        # Also update a human-readable Saved_positions log file in the same folder
+        # Also append entries into a Saved_positions log file in the same folder
         try:
             log_path = os.path.join(os.path.dirname(file_path), 'Saved_positions_LOG.txt')
-            self._write_saved_positions_log(log_path, data)
+            # append one row per stage for this preset (do not overwrite previous rows)
+            try:
+                self._append_saved_positions_log(log_path, preset, payload)
+            except Exception:
+                # fallback: best-effort full rewrite
+                try:
+                    self._write_saved_positions_log(log_path, data)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -463,9 +471,9 @@ class StageControlPanel(QtWidgets.QWidget):
         )
 
     def _write_saved_positions_log(self, log_path: str, data: dict):
-        """Write a human-readable log of Saved_positions.json to `log_path`.
-        The format lists each preset with its timestamp and stage entries (name, stage_num, position, order).
-        If a stage includes `pre_moves`, those are listed beneath the stage as pre-move lines.
+        """(Legacy) Full-write human-readable log. Kept as a fallback.
+        This writes a block-style log; prefer the append-style CSV produced by
+        `_append_saved_positions_log` which preserves history by appending rows.
         """
         try:
             lines = []
@@ -492,19 +500,60 @@ class StageControlPanel(QtWidgets.QWidget):
                     lines.append(f"  - {name} (stage_num={stage_num}) order={order} → {pos}")
                 lines.append("")
 
-            # Write file atomically
             tmp = log_path + ".tmp"
             with open(tmp, 'w', encoding='utf-8') as f:
                 f.write("\n".join(lines))
             try:
                 os.replace(tmp, log_path)
             except Exception:
-                # fallback rename
                 try:
                     os.remove(log_path)
                 except Exception:
                     pass
                 os.replace(tmp, log_path)
         except Exception:
-            # Best-effort: do not raise from logger
+            pass
+
+    def _append_saved_positions_log(self, log_path: str, preset_name: str, payload: dict):
+        """Append one row per stage to the Saved_positions_LOG.txt.
+        Format (CSV): Preset,Date,Time,Stage,Position,Order
+        Each call appends N rows (N = number of stages in payload) so history is preserved.
+        """
+        try:
+            # determine timestamp: prefer payload['last_saved_time'] in ISO, else now
+            ts = payload.get('last_saved_time') if isinstance(payload.get('last_saved_time'), str) else None
+            if ts:
+                try:
+                    # try parsing ISO-like timestamp
+                    dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S")
+                except Exception:
+                    try:
+                        dt = datetime.fromisoformat(ts)
+                    except Exception:
+                        dt = datetime.now()
+            else:
+                dt = datetime.now()
+            date_str = dt.strftime("%Y-%m-%d")
+            time_str = dt.strftime("%H:%M:%S")
+
+            header = "Preset,Date,Time,Stage,Position,Order"
+            write_header = not os.path.exists(log_path)
+
+            # Build lines
+            lines = []
+            for st in payload.get('stages', []):
+                name = st.get('name', '')
+                pos = st.get('position', '')
+                order = st.get('order', '')
+                # Ensure comma-separated and safe string conversion
+                line = f"{preset_name},{date_str},{time_str},{name},{pos},{order}"
+                lines.append(line)
+
+            # Append to file
+            with open(log_path, 'a', encoding='utf-8') as f:
+                if write_header:
+                    f.write(header + "\n")
+                for L in lines:
+                    f.write(L + "\n")
+        except Exception:
             pass
