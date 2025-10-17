@@ -1076,6 +1076,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
         except Exception:
             pass
+        # If a Move-to-Saved sequence is active, continue to the next queued move now
+        try:
+            if getattr(self, '_saved_move_active', False):
+                # schedule a small delay so the readback and UI update can occur first
+                try:
+                    QtCore.QTimer.singleShot(50, self._dequeue_and_move_next)
+                except Exception:
+                    try:
+                        self._dequeue_and_move_next()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def _set_fire_button_enabled(self, enabled: bool) -> None:
         """Helper to enable/disable the GUI Fire button on the FireControlsPanel.
@@ -1341,15 +1354,27 @@ class MainWindow(QtWidgets.QMainWindow):
         unit = self.part1.rows[address - 1].info.unit
         try:
             if target_pos == 0.0:
-                self.stage.home(address)  # runs in StageIO thread, emits 'homed' + 'position'
-                self.status_panel.append_line(f" → Moving Address {address} to HOME (0.0)")
+                # Queue a home request on the Stage I/O thread
+                self.status_panel.append_line(f" → Queuing HOME for Address {address} (0.0)")
+                try:
+                    self.req_home.emit(address)
+                except Exception:
+                    # fallback: try invoking on the worker (best-effort non-blocking)
+                    try: QtCore.QMetaObject.invokeMethod(self.stage, 'home', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, address))
+                    except Exception: pass
             else:
-                self.stage.move_absolute(address, target_pos, unit)  # runs in StageIO thread, emits 'moved' + 'position'
-                self.status_panel.append_line(f" → Moving Address {address} to {target_pos:.6f} {unit}")
+                # Queue an absolute move on the Stage I/O thread
+                self.status_panel.append_line(f" → Queuing move Address {address} to {target_pos:.6f} {unit}")
+                try:
+                    self.req_abs.emit(address, float(target_pos), unit)
+                except Exception:
+                    # fallback: invoke via queued connection to avoid blocking UI
+                    try: QtCore.QMetaObject.invokeMethod(self.stage, 'move_absolute', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, address), QtCore.Q_ARG(float, float(target_pos)), QtCore.Q_ARG(str, unit))
+                    except Exception:
+                        pass
         except Exception as e:
             self.status_panel.append_line(f"Move error on Address {address}: {e}")
-        # attempt to keep going
-        QtCore.QTimer.singleShot(0, self._dequeue_and_move_next)
+        # Do NOT advance the queue here; wait for moved/homed events to continue
 
     @QtCore.pyqtSlot(int, bool)
     def _on_pm_bypass_clicked(self, pm_index: int, engaged: bool):
