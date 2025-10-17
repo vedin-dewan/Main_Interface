@@ -329,6 +329,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.part2.request_set_ubound.connect(self._on_request_set_ubound)
 
         self.part2.request_move_to_saved.connect(self._on_request_move_to_saved)
+        # Stop All request from StageControlPanel: cancel queued saved moves and stop hardware
+        try:
+            self.part2.request_stop_all.connect(lambda: self._on_request_stop_all())
+        except Exception:
+            pass
         self._saved_move_queue = []
         self._saved_move_active = False
 
@@ -1581,6 +1586,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.stage.close()
         except Exception:
             pass
+
+    
         try:
             if hasattr(self, 'io_thread') and self.io_thread is not None:
                 self.io_thread.quit()
@@ -1630,3 +1637,31 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
         # InfoWriter was initialized in __init__; nothing to do here.
+
+    @QtCore.pyqtSlot()
+    def _on_request_stop_all(self):
+        """Handle Stop All: cancel any queued Move-to-Saved sequence and send stop to all stages."""
+        try:
+            # Cancel saved-move queue immediately so no further queued moves will run
+            try:
+                self._saved_move_queue = []
+                self._saved_move_active = False
+            except Exception:
+                pass
+            # Emit stop for every configured stage (part1.rows are 0-indexed, addresses start at 1)
+            try:
+                for addr, row in enumerate(getattr(self.part1, 'rows', []) , start=1):
+                    try:
+                        unit = getattr(row.info, 'unit', 'mm') or 'mm'
+                        # schedule stop on I/O thread via queued signal
+                        QtCore.QTimer.singleShot(0, lambda a=addr, u=unit: self.req_stop.emit(a, u))
+                    except Exception:
+                        pass
+                try:
+                    self.status_panel.append_line('Stop All: issued stop to all stages and cleared queued moves')
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            pass
