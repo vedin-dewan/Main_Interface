@@ -216,6 +216,11 @@ class KinesisFireIO(QtCore.QObject):
         try:
             self._fire_requested = False
             self._burst_count = 0
+            # clear any lingering one-shot active flag so tick isn't blocked when switching modes
+            try:
+                self._one_shot_active = False
+            except Exception:
+                pass
             # initialize last trigger state to the current input so falling-edge detection is consistent
             try:
                 val = self._read_trigger()
@@ -258,6 +263,19 @@ class KinesisFireIO(QtCore.QObject):
         self._fire_requested = True
         self._burst_count = 0
         self.shots_progress.emit(0, self._num_shots)
+        # Arm state: ensure outputs reflect the armed condition immediately so the shutter
+        # is enabled without waiting for the next poll tick (avoids missed audible click).
+        try:
+            val = self._read_trigger()
+            if val is None:
+                # safe default: enable shutter, leave cameras/spec lines low
+                try: self._write_outputs(1, 0, 0)
+                except Exception: pass
+            else:
+                try: self._write_outputs(1, 1 - val, 1 - val)
+                except Exception: pass
+        except Exception:
+            pass
         self.status.emit(f"Armed ({self._mode})")
 
     # ---------- internals ----------
