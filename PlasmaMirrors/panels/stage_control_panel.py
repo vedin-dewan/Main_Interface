@@ -185,6 +185,8 @@ class StageControlPanel(QtWidgets.QWidget):
         # Buttons row 2 (Home All | Scan Stage | Stop All)
         row2 = QtWidgets.QHBoxLayout()
         self.btn_home_all  = QtWidgets.QPushButton("Home All")
+        # Clicking Home All should trigger the Move-to-Saved flow for the preset "HOME ALL"
+        self.btn_home_all.clicked.connect(lambda: self.request_move_to_saved.emit("HOME ALL"))
         self.btn_scan_stage = QtWidgets.QPushButton("Scan Stage")
         self.btn_stop_all   = QtWidgets.QPushButton("Stop All")
         row2.addWidget(self.btn_home_all)
