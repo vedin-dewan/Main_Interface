@@ -260,18 +260,13 @@ class KinesisFireIO(QtCore.QObject):
             self._start_single_sequence(self._num_shots)
             return
         # Otherwise, arm and let _tick handle edge detection / burst counting.
+        self._fire_requested = True
         self._burst_count = 0
         self.shots_progress.emit(0, self._num_shots)
-        # Read the current trigger and set last_trig so the worker can detect a future
-        # falling edge correctly (prevents missed first edge when arming).
+        # Arm state: ensure outputs reflect the armed condition immediately so the shutter
+        # is enabled without waiting for the next poll tick (avoids missed audible click).
         try:
             val = self._read_trigger()
-            try:
-                self._last_trig = val
-            except Exception:
-                pass
-            # Arm state: ensure outputs reflect the armed condition immediately so the shutter
-            # is enabled without waiting for the next poll tick (avoids missed audible click).
             if val is None:
                 # safe default: enable shutter, leave cameras/spec lines low
                 try: self._write_outputs(1, 0, 0)
@@ -279,35 +274,9 @@ class KinesisFireIO(QtCore.QObject):
             else:
                 try: self._write_outputs(1, 1 - val, 1 - val)
                 except Exception: pass
-
         except Exception:
             pass
-        # Mark armed after we've initialized last_trig and outputs so tick sees consistent state.
-        # Use a short deferred arm to avoid races where _tick runs between initializing
-        # _last_trig/outputs and setting the armed flag. The delay is half the poll period
-        # (minimum 1 ms) which is small but lets the event loop process ordering reliably.
-        try:
-            delay_ms = max(1, int((self.cfg.poll_period_s * 1000) / 2))
-            def _set_armed():
-                try:
-                    self._fire_requested = True
-                except Exception:
-                    pass
-                try:
-                    self.status.emit(f"Armed ({self._mode})")
-                except Exception:
-                    pass
-            QtCore.QTimer.singleShot(delay_ms, _set_armed)
-        except Exception:
-            # fallback: set immediately
-            try:
-                self._fire_requested = True
-            except Exception:
-                pass
-            try:
-                self.status.emit(f"Armed ({self._mode})")
-            except Exception:
-                pass
+        self.status.emit(f"Armed ({self._mode})")
 
     # ---------- internals ----------
     def _discover_serials(self) -> list[str]:
@@ -514,7 +483,6 @@ class KinesisFireIO(QtCore.QObject):
         val = self._read_trigger()
         last = self._last_trig
         falling = (last == 1 and val == 0)
-
 
         if self._mode == "continuous":
             self._set_mode_internal("manual")
