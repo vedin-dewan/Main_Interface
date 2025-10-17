@@ -200,6 +200,11 @@ class KinesisFireIO(QtCore.QObject):
         if mode not in ("continuous", "single", "burst"):
             self.error.emit(f"Unknown mode: {mode}")
             return
+        # debug log previous/new mode
+        try:
+            self.log.emit(f"set_mode called: {getattr(self,'_mode',None)} -> {mode}")
+        except Exception:
+            pass
         # leaving a single sequence mid-stream? abort it safely
         if self._in_single_sequence and mode != "single":
             self._abort_single_sequence()
@@ -211,6 +216,23 @@ class KinesisFireIO(QtCore.QObject):
         else:
             self._set_mode_internal("triggered")
             self._set_shutter_on()
+        # Reset transient arm state so toggling modes doesn't inherit stale requests
+        try:
+            self._fire_requested = False
+            self._burst_count = 0
+            # initialize last trigger state to the current input so falling-edge detection is consistent
+            try:
+                val = self._read_trigger()
+                self._last_trig = val
+            except Exception:
+                self._last_trig = None
+            # ensure outputs are in known state (no accidental arming)
+            try:
+                self._write_outputs(0, 0, 0)
+            except Exception:
+                pass
+        except Exception:
+            pass
         self.status.emit(f"Mode set to {mode}")
 
     @QtCore.pyqtSlot(int)
@@ -228,6 +250,10 @@ class KinesisFireIO(QtCore.QObject):
     @QtCore.pyqtSlot()
     def fire(self):
         """Arm single/burst or no-op in continuous."""
+        try:
+            self.log.emit(f"fire() called (mode={getattr(self,'_mode',None)})")
+        except Exception:
+            pass
         if self._mode == "continuous":
             self.log.emit("Fire (continuous): device follows external trigger; nothing to arm.")
             return
@@ -439,6 +465,11 @@ class KinesisFireIO(QtCore.QObject):
         # If a single sequence or a one-shot is running, let that owner own the outputs.
         # This prevents the periodic poll from immediately clearing outputs set by a
         # one-shot pulse.
+        # diagnostic: emit a small trace of current internal state to help debug mode toggles
+        try:
+            self.log.emit(f"_tick: mode={self._mode}, fire_req={self._fire_requested}, in_single={self._in_single_sequence}, one_shot={getattr(self,'_one_shot_active',False)}, last_trig={self._last_trig}")
+        except Exception:
+            pass
         if self._in_single_sequence or getattr(self, '_one_shot_active', False):
             return
 
