@@ -603,11 +603,35 @@ class MainWindow(QtWidgets.QMainWindow):
 
             #Burst: forward to worker fire() which arms burst behavior
             if mode == 'burst':
+                # queue the fire call on the worker
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire', QtCore.Qt.ConnectionType.QueuedConnection)
                 except Exception:
                     try: self.status_panel.append_line('Failed to queue burst fire()')
                     except Exception: pass
+
+                # After firing, perform burst save: create the Burst_n folder and move/rename matching files
+                try:
+                    # gather parameters from UI
+                    outdir = (self.overall_controls.dir_edit.text() or '').strip() if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'dir_edit', None) else ''
+                    burst_rel = (self.overall_controls.burst_edit.text() or '').strip() if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'burst_edit', None) else ''
+                    exp_name = (self.overall_controls.exp_edit.text() or '').strip() if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'exp_edit', None) else 'Experiment'
+                    # tokens: camera names and spectrometer filenames
+                    cams = [str(c.get('Name','')).strip() for c in getattr(self.device_tabs, '_cameras', []) if c.get('Name')]
+                    specs = [str(s.get('filename','')).strip() for s in getattr(self.device_tabs, '_spectrometers', []) if s.get('filename')]
+                    tokens = cams + specs
+                    # use rename wait timeout from settings
+                    timeout_ms = int(getattr(self, '_rename_max_wait_ms', 5000))
+                    poll_ms = int(getattr(self, '_rename_poll_ms', 200)) if getattr(self, '_rename_poll_ms', None) is not None else 200
+                    stable_s = float(getattr(self, '_rename_stable_time', 0.3)) if getattr(self, '_rename_stable_time', None) is not None else 0.3
+                    # perform burst save (blocking poll similar to single-shot rename)
+                    try:
+                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s)
+                    except Exception as e:
+                        try: self.status_panel.append_line(f'Burst save failed: {e}')
+                        except Exception: pass
+                except Exception:
+                    pass
                 return
 
             # Continuous: forward to worker (worker treats continuous fire as a no-op/arm)
@@ -894,6 +918,190 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             try: self.status_panel.append_line(f"Rename exception: {e}")
             except Exception: pass
+
+    def _handle_burst_save(self, outdir: str, burst_rel: str, tokens: list, experiment: str, timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3):
+        """Create the burst folder and move/rename files matching tokens into it.
+
+        Behavior:
+        - Ensure outdir/burst_rel exists (create if necessary).
+        - Create a new subfolder Burst_n where n = 0..max existing + 1.
+        - Find files in outdir whose filenames contain any token (case-insensitive).
+        - Sort matches by modification time (earliest first) and move them into Burst_n.
+        - Rename moved files to {experiment}_Burst_{tokenlabel}_{j}{ext} where j increments per token starting at 0.
+        """
+        try:
+            if not outdir:
+                try: self.status_panel.append_line('Burst save: no output directory configured')
+                except Exception: pass
+                return
+
+            base_folder = outdir
+            if burst_rel:
+                base_folder = os.path.join(base_folder, burst_rel)
+
+            try:
+                os.makedirs(base_folder, exist_ok=True)
+            except Exception as e:
+                try: self.status_panel.append_line(f'Burst save: failed to create base folder {base_folder}: {e}')
+                except Exception: pass
+                return
+
+            # find next Burst_n
+            try:
+                existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
+            except Exception:
+                existing = []
+            maxn = -1
+            for d in existing:
+                try:
+                    n = int(d.split('_', 1)[1])
+                    if n > maxn:
+                        maxn = n
+                except Exception:
+                    continue
+            nextn = maxn + 1
+            burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
+            try:
+                os.makedirs(burst_dir, exist_ok=False)
+            except Exception:
+                try:
+                    burst_dir = os.path.join(base_folder, f'Burst_{nextn}_alt')
+                    os.makedirs(burst_dir, exist_ok=True)
+                except Exception as e:
+                    try: self.status_panel.append_line(f'Burst save: failed to create burst dir: {e}')
+                    except Exception: pass
+                    return
+
+            # Poll for files matching tokens and wait for stability (similar to single-shot logic)
+            toks = [str(t).strip() for t in tokens if t]
+            toks_l = [t.lower() for t in toks]
+
+            max_wait_ms = int(timeout_ms or 5000)
+            poll_ms = int(poll_ms or 200)
+            stable_time = float(stable_s or 0.3)
+            deadline = time.time() + (max_wait_ms / 1000.0)
+
+            # track candidates per token index
+            candidates = {i: [] for i in range(len(toks_l))}
+            last_size = {}
+            stable_since = {}
+            stable_found = {i: [] for i in range(len(toks_l))}
+
+            processed = getattr(self, '_processed_output_files', set()) or set()
+
+            while time.time() < deadline:
+                try:
+                    entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
+                except Exception:
+                    entries = []
+
+                now = time.time()
+                for fname in entries:
+                    full = os.path.join(outdir, fname)
+                    # skip files already processed or already inside a burst folder
+                    if full in processed:
+                        continue
+                    # skip files already moved into this burst_dir (safety)
+                    try:
+                        if os.path.commonpath([os.path.abspath(full), os.path.abspath(burst_dir)]) == os.path.abspath(burst_dir):
+                            continue
+                    except Exception:
+                        pass
+
+                    low = fname.lower()
+                    for i, tok_l in enumerate(toks_l):
+                        if not tok_l:
+                            continue
+                        if tok_l in low:
+                            # register candidate if not already tracked
+                            if full not in candidates.get(i, []):
+                                candidates.setdefault(i, []).append(full)
+                                last_size[full] = -1
+                                stable_since[full] = None
+                            # check stability
+                            try:
+                                cur_size = os.path.getsize(full)
+                            except Exception:
+                                cur_size = -1
+                            if cur_size == last_size.get(full, -2) and cur_size >= 0:
+                                if stable_since.get(full) is None:
+                                    stable_since[full] = now
+                                elif (now - stable_since[full]) >= stable_time:
+                                    # mark as stable if not already recorded
+                                    if full not in stable_found.get(i, []):
+                                        stable_found.setdefault(i, []).append(full)
+                            else:
+                                last_size[full] = cur_size
+                                stable_since[full] = None
+                            break
+
+                # If we've found at least one stable file for any token and time remaining is small, break early
+                any_stable = any(bool(v) for v in stable_found.values())
+                if any_stable and (time.time() + 0.1) >= deadline:
+                    break
+
+                try:
+                    time.sleep(poll_ms / 1000.0)
+                except Exception:
+                    pass
+
+            # Build matched list: for each token, sort stable files by mtime ascending
+            matched = []  # tuples (fullpath, token_label, mtime)
+            for i, files in stable_found.items():
+                if not files:
+                    continue
+                files_unique = []
+                seen = set()
+                for f in files:
+                    if f not in seen:
+                        seen.add(f)
+                        try:
+                            m = os.path.getmtime(f)
+                        except Exception:
+                            m = 0
+                        files_unique.append((f, toks[i], m))
+                # sort by mtime ascending
+                files_unique.sort(key=lambda x: x[2] or 0)
+                matched.extend(files_unique)
+
+            if not matched:
+                try: self.status_panel.append_line('Burst save: no stable files found matching camera/spectrometer tokens (timed out)')
+                except Exception: pass
+                return
+
+            # Move and rename matched files into the burst directory grouping by token label
+            counters = {}
+            for full, label, m in matched:
+                try:
+                    counters.setdefault(label, 0)
+                    j = counters[label]
+                    counters[label] = j + 1
+                    base, ext = os.path.splitext(os.path.basename(full))
+                    safe_label = ''.join(ch for ch in label if ch.isalnum() or ch in ('-', '_')) or 'Token'
+                    newname = f"{experiment}_Burst_{safe_label}_{j}{ext}"
+                    dest = os.path.join(burst_dir, newname)
+                    if os.path.exists(dest):
+                        try:
+                            dest = os.path.join(burst_dir, f"{os.path.splitext(newname)[0]}_dup{ext}")
+                        except Exception:
+                            pass
+                    # use replace to move atomically where possible
+                    os.replace(full, dest)
+                    try:
+                        # mark as processed so other renamers skip it
+                        processed.add(dest)
+                        if hasattr(self, '_processed_output_files'):
+                            try: self._processed_output_files.add(dest)
+                            except Exception: pass
+                    except Exception:
+                        pass
+                    try: self.status_panel.append_line(f"Burst saved: {os.path.basename(full)} -> {os.path.join(os.path.basename(burst_dir), os.path.basename(dest))}")
+                    except Exception: pass
+                except Exception as e:
+                    try: self.status_panel.append_line(f"Burst save: failed to move {full}: {e}")
+                    except Exception: pass
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(str, int)
     def _on_device_connect_requested(self, port: str, baud: int):
