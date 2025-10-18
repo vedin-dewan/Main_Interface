@@ -29,7 +29,7 @@ import time
 from typing import Optional, List
 
 try:
-    from pylablib.devices import Newport
+    from pylablib.devices import Newport_pocomotors as Newport
 except Exception:
     Newport = None
 
