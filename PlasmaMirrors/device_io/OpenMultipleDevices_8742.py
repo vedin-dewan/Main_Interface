@@ -32,7 +32,7 @@ deviceIO = DeviceIOLib (True)
 cmdLib8742 = CmdLib8742 (deviceIO)
 
 # Set up USB to only discover picomotors
-deviceIO.SetUSBProductID (0x4000);
+deviceIO.SetUSBProductID (0x4000)
 
 # Discover USB and Ethernet devices - delay 5 seconds
 deviceIO.DiscoverDevices (5, 5000)
