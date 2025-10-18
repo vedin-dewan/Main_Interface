@@ -83,13 +83,16 @@ if addresses is None:
 else:
     addresses = list(addresses)
     print('Discovered addresses behind adapter:', addresses)
-
+print("Primary Model and Serial number (address 1):", cmd.GetModelSerial(adapter_key,1))
+print("Slave model ad serial number (address 2):", cmd.GetModelSerial(adapter_key,2))
 # ----------------- example move (comment/uncomment to enable) -----------------
 # WARNING: only enable after you confirm addresses and axis numbers. This example
 # moves axis 1 on address addresses[0] by +10 steps. Uncomment the next line to run.
-
-cmd.RelativeMove(adapter_key, 1, 10, addresses[0])
-
+addr = 1
+motor_axes = 2
+steps = -100
+move = cmd.RelativeMove(adapter_key, addr, motor_axes,steps)
+print(move)
 # Close and shutdown
 deviceIO.Close(adapter_key)
 cmd.Shutdown()
