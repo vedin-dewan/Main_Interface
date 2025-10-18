@@ -94,36 +94,43 @@ class NewFocusPicoIO(QtCore.QObject):
                         ok = self.deviceIO.Open(k)
                     except Exception:
                         ok = False
-                    # query model/serial for primary controller (address 1)
+
+                    # Query slave addresses once and compute the max address.
+                    # The adapter (primary) is conventionally address 1. Some
+                    # controllers return only slave addresses (e.g., [2]) so we
+                    # must include 1 in the range.
+                    addrs = []
                     try:
-                        model_serial = None
-                        try:
-                            model_serial = self.cmd.GetModelSerial(k, 1)
-                        except Exception:
-                            # fallback: DeviceIOLib may know model/serial
-                            try:
-                                model_serial = self.deviceIO.GetModelSerial(k)
-                            except Exception:
-                                model_serial = None
-                        # query slave addresses
+                        a = self.cmd.GetDeviceAddresses(k)
+                        if a is not None:
+                            addrs = list(a)
+                    except Exception:
                         addrs = []
+
+                    # Determine maximum address (include primary address 1)
+                    max_addr = 1
+                    try:
+                        if addrs:
+                            max_addr = max([int(x) for x in addrs] + [1])
+                    except Exception:
+                        max_addr = 1
+
+                    # Query model/serial for each address from 1..max_addr
+                    for addr in range(1, int(max_addr) + 1):
                         try:
-                            a = self.cmd.GetDeviceAddresses(k)
-                            if a is not None:
-                                addrs = list(a)
-                        except Exception:
-                            addrs = []
-                        # emit discovered entries for primary + slaves
-                        # Primary uses address 1 by convention
-                        adapters.append({'adapter_key': str(k), 'address': 1, 'model_serial': str(model_serial) if model_serial is not None else ''})
-                        for addr in addrs:
+                            ms = None
                             try:
                                 ms = self.cmd.GetModelSerial(k, int(addr))
                             except Exception:
-                                ms = None
+                                # fallback to DeviceIOLib if available
+                                try:
+                                    if addr == 1:
+                                        ms = self.deviceIO.GetModelSerial(k)
+                                except Exception:
+                                    ms = None
                             adapters.append({'adapter_key': str(k), 'address': int(addr), 'model_serial': str(ms) if ms is not None else ''})
-                    except Exception as e:
-                        self.log.emit(f'Adapter {k}: failed to query addresses/model: {e}')
+                        except Exception:
+                            adapters.append({'adapter_key': str(k), 'address': int(addr), 'model_serial': ''})
                 except Exception:
                     continue
 
