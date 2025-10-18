@@ -7,7 +7,7 @@ method signatures. Save output to a file and paste here if you want me to
 help interpret which methods to call.
 
 Usage:
-  python device_io/inspect_dotnet_assemblies.py /path/to/DeviceIOLib.dll /path/to/CmdLib8742.dll --out report.txt
+  python PlasmaMirrors/device_io/inspect_dotnet_assemblies.py C:\Users\ELMIL\Desktop\Main_Interface\PlasmaMirrors\device_io\DeviceIOLib.dll C:\Users\ELMIL\Desktop\Main_Interface\PlasmaMirrors\device_io\CmdLib8742.dll --out report.txt
 
 If pythonnet is not installed, the script prints instructions.
 """
