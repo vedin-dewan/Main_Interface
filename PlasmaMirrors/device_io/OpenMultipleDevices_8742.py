@@ -62,7 +62,7 @@ if (nDeviceCount > 0) :
             strFwDate = ""
             nReturn = -1
 
-            nReturn, strModel, strSerialNum, strFwVersion, strFwDate = cmdLib8742.IdentifyInstrument (strDeviceKey, strModel, strSerialNum, strFwVersion, strFwDate)
+            strModel, strSerialNum, strFwVersion, strFwDate = cmdLib8742.IdentifyInstrument (strDeviceKey, strModel, strSerialNum, strFwVersion, strFwDate)
             print ("Return Value = %s" % nReturn)
             print ("Model = %s" % strModel)
             print ("Serial Num = %s" % strSerialNum)
