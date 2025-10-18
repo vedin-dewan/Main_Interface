@@ -20,7 +20,7 @@ import os
 import sys
 
 # Optional: first CLI arg is the folder containing DeviceIOLib.dll and CmdLib8742.dll
-dll_dir = sys.argv[1] if len(sys.argv) > 1 else None
+dll_dir = r"C:\Program Files\New Focus\New Focus Picomotor Application\Bin"#sys.argv[1] if len(sys.argv) > 1 else None
 
 if dll_dir and os.path.isdir(dll_dir) and sys.platform == 'win32':
     # Ensure the process can find vendor DLLs (Python 3.8+)
@@ -88,7 +88,7 @@ else:
 # WARNING: only enable after you confirm addresses and axis numbers. This example
 # moves axis 1 on address addresses[0] by +10 steps. Uncomment the next line to run.
 
-# cmd.RelativeMove(adapter_key, 1, 10, addresses[0])
+cmd.RelativeMove(adapter_key, 1, 10, addresses[0])
 
 # Close and shutdown
 deviceIO.Close(adapter_key)
