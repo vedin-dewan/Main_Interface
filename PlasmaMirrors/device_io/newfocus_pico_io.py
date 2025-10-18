@@ -24,6 +24,7 @@ class NewFocusPicoIO(QtCore.QObject):
     discovered = QtCore.pyqtSignal(list)  # list of dicts: { 'adapter_key', 'address', 'model_serial' }
     moved = QtCore.pyqtSignal(str, int, int)  # adapter_key, address, axis
     moving = QtCore.pyqtSignal(str, int, bool)
+    position = QtCore.pyqtSignal(str, int, int, float)  # adapter_key, address, axis, position
 
     def __init__(self, dll_dir: str | None = None, usb_pid: int = 0x4000):
         super().__init__()
@@ -209,12 +210,59 @@ class NewFocusPicoIO(QtCore.QObject):
                 self.log.emit('RelativeMove: move issued (motion-done poll timed out)')
             else:
                 self.log.emit('RelativeMove: complete')
+            # Query position only if motion reported as done
+            if done:
+                try:
+                    # Use the query helper (which emits the position signal)
+                    self.query_position(adapter_key, int(address), int(axis))
+                except Exception:
+                    # fallback: direct GetPosition call and emit
+                    try:
+                        out = self.cmd.GetPosition(adapter_key, int(address), int(axis))
+                        if out is not None:
+                            if isinstance(out, (list, tuple)) and len(out) >= 1:
+                                out = out[0]
+                            val = float(out)
+                            self.position.emit(str(adapter_key), int(address), int(axis), float(val))
+                    except Exception:
+                        pass
         except Exception as e:
             self.error.emit('RelativeMove failed: ' + str(e))
             try:
                 self.moving.emit(adapter_key, int(address), False)
             except Exception:
                 pass
+
+    @QtCore.pyqtSlot(str, int, int)
+    def query_position(self, adapter_key: str, address: int, axis: int):
+        """Query the device for a position value for the given adapter/address/axis.
+
+        This method tries several likely method signatures on the vendor library and
+        emits `position(adapter_key, address, axis, value)` when successful.
+        """
+        try:
+            if not self.cmd:
+                self.error.emit('CmdLib not loaded')
+                return
+            val = None
+            try:
+                out = self.cmd.GetPosition(adapter_key, int(address), int(axis))
+                if out is not None:
+                    if isinstance(out, (list, tuple)) and len(out) >= 1:
+                        out = out[0]
+                    try:
+                        val = float(out)
+                    except Exception:
+                        val = None
+            except Exception:
+                val = None
+
+            if val is None:
+                self.log.emit(f'Position: unknown for {adapter_key} addr={address} axis={axis}')
+            else:
+                self.position.emit(str(adapter_key), int(address), int(axis), float(val))
+        except Exception as e:
+            self.error.emit('Query position failed: ' + str(e))
 
     @QtCore.pyqtSlot(str, int)
     def stop_motion(self, adapter_key: str, address: int):

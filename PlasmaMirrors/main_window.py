@@ -289,6 +289,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.pico_panel.request_close.connect(lambda: QtCore.QMetaObject.invokeMethod(self.pico_io, 'close', QtCore.Qt.ConnectionType.QueuedConnection))
                 self.pico_panel.request_move.connect(lambda adapter, addr, axis, steps: QtCore.QMetaObject.invokeMethod(self.pico_io, 'relative_move', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(str, adapter), QtCore.Q_ARG(int, addr), QtCore.Q_ARG(int, axis), QtCore.Q_ARG(int, steps)))
                 self.pico_panel.request_stop_all.connect(lambda: QtCore.QMetaObject.invokeMethod(self.pico_io, 'stop_all', QtCore.Qt.ConnectionType.QueuedConnection))
+                # wire panel position query → IO and IO position updates → panel
+                try:
+                    self.pico_panel.request_query_position.connect(lambda adapter, addr, axis: QtCore.QMetaObject.invokeMethod(self.pico_io, 'query_position', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(str, adapter), QtCore.Q_ARG(int, int(addr)), QtCore.Q_ARG(int, int(axis))))
+                    self.pico_io.position.connect(self.pico_panel.position_update)
+                except Exception:
+                    pass
             except Exception:
                 self.pico_panel = None
 
