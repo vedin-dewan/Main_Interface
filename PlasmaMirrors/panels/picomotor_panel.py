@@ -11,9 +11,9 @@ class PicoMotorRow(QtWidgets.QWidget):
         self.addr = int(addr)
         h = QtWidgets.QHBoxLayout(self)
         h.setContentsMargins(2,2,2,2)
-        # address spin + name edit + position label
-        self.spin = QtWidgets.QSpinBox(); self.spin.setRange(0, 9999); self.spin.setFixedWidth(50)
-        self.spin.setValue(int(addr))
+        # axis number label + name edit + position label
+        self.spin = QtWidgets.QLabel(str(addr))
+        self.spin.setFixedWidth(40)
         self.name = QtWidgets.QLineEdit('')
         self.pos = QtWidgets.QLineEdit('0'); self.pos.setReadOnly(True); self.pos.setFixedWidth(90)
         h.addWidget(self.spin)
@@ -30,7 +30,7 @@ class PicoPanel(QtWidgets.QWidget):
     request_close = QtCore.pyqtSignal()
     request_move = QtCore.pyqtSignal(str, int, int, int)  # adapter_key, address, axis, steps
     request_stop_all = QtCore.pyqtSignal()
-    request_query_position = QtCore.pyqtSignal(str, int, int)  # adapter_key, address, axis
+    # position queries are handled locally by the UI based on relative moves
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -46,13 +46,6 @@ class PicoPanel(QtWidgets.QWidget):
         self.controller_combo.setMinimumWidth(240)
         self.controller_combo.setMaximumWidth(480)
         top.addWidget(self.controller_combo)
-        # allow setting axis count per-controller
-        self.axis_count_spin = QtWidgets.QSpinBox()
-        self.axis_count_spin.setRange(1, 16)
-        self.axis_count_spin.setValue(4)
-        self.axis_count_spin.setFixedWidth(80)
-        top.addWidget(QtWidgets.QLabel('Axes:'))
-        top.addWidget(self.axis_count_spin)
         v.addLayout(top)
 
         # Motor rows (scroll area)
@@ -66,12 +59,12 @@ class PicoPanel(QtWidgets.QWidget):
         self.scroll.setWidget(self.inner)
         v.addWidget(self.scroll, 1)
 
-        # Selected motor controls
+        # Selected motor controls (axes are fixed 1..4)
         mid = QtWidgets.QHBoxLayout()
         mid.addWidget(QtWidgets.QLabel('Selected Motor:'))
-        self.motor_selector = QtWidgets.QComboBox()
-        self.motor_selector.setFixedWidth(60)
-        mid.addWidget(self.motor_selector)
+        self.current_axis_label = QtWidgets.QLabel('1')
+        self.current_axis_label.setFixedWidth(20)
+        mid.addWidget(self.current_axis_label)
         self.light = RoundLight(14, '#22cc66', '#2b2b2b')
         mid.addWidget(self.light)
         self.btn_stop = QtWidgets.QPushButton('Stop')
@@ -104,20 +97,23 @@ class PicoPanel(QtWidgets.QWidget):
         self.btn_back.clicked.connect(self._on_back)
         self.btn_forward.clicked.connect(self._on_forward)
         self.btn_stop.clicked.connect(lambda: self.request_stop_all.emit())
-        # update axis rows whenever axis-count changes
-        self.axis_count_spin.valueChanged.connect(lambda v: self._on_controller_changed(self.controller_combo.currentIndex()))
-    # No periodic polling: position queries are requested by the IO after moves.
 
+        # No periodic polling: UI tracks positions locally and updates on move events.
 
         # internal state
-        # controllers: list of tuples (adapter_key, address, model_serial)
-        self._controllers = []
-        self._last_mapping = {}
         # mapping (adapter_key, address, axis) -> PicoMotorRow widget for live updates
         self._axis_widgets = {}
 
+        # persisted names file in parameters/pico_names.json
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self._names_file = os.path.join(base_dir, 'parameters', 'pico_names.json')
+        self._axis_names = {}
         # load persisted axis names
         self._load_axis_names()
+        # position cache: start at zero for all axes when created
+        self._pos_cache = {}
+        # pending moves mapping: (adapter,addr,axis) -> pending delta (int)
+        self._pending_moves = {}
     def set_controllers(self, controllers: typing.List[str]):
         # controllers here may be adapter_key strings; clear the combo and add as-is
         self._controllers = []
@@ -170,17 +166,6 @@ class PicoPanel(QtWidgets.QWidget):
             except Exception:
                 pass
             self.controller_combo.currentIndexChanged.connect(self._on_controller_changed)
-            # restore axis_count per controller if present in persisted file
-            try:
-                # load persisted per-controller axis counts
-                p = self._axis_counts_path()
-                if os.path.isfile(p):
-                    with open(p, 'r', encoding='utf-8') as f:
-                        self._axis_counts = json.load(f)
-                else:
-                    self._axis_counts = {}
-            except Exception:
-                self._axis_counts = {}
         except Exception:
             pass
 
@@ -242,34 +227,20 @@ class PicoPanel(QtWidgets.QWidget):
 
     def _refresh_motor_selector_for_current_controller(self):
         try:
-            self.motor_selector.blockSignals(True)
-            self.motor_selector.clear()
             data = self.controller_combo.currentData()
-            # New behavior: controller combo itemData is (adapter_key, address)
             if isinstance(data, (list, tuple)) and len(data) >= 2:
                 try:
-                    # populate axes (1..N) for selected controller using axis_count_spin
-                    axis_count = int(self.axis_count_spin.value() if hasattr(self, 'axis_count_spin') else 4)
-                    for axis in range(1, axis_count + 1):
-                        self.motor_selector.addItem(str(axis), axis)
-                    # also populate the axis rows area
                     adapter = str(data[0])
                     addr = int(data[1])
-                    self._populate_axis_rows(adapter, addr, axis_count=axis_count)
+                    self._populate_axis_rows(adapter, addr, axis_count=4)
+                    try:
+                        self.current_axis_label.setText('1')
+                    except Exception:
+                        pass
                 except Exception:
                     pass
-                self.motor_selector.blockSignals(False)
                 return
-
-            # Backwards-compatible: data may be adapter_key string; populate all addresses
-            key = data
-            if not key:
-                self.motor_selector.blockSignals(False)
-                return
-            addrs = self._last_mapping.get(key, [])
-            for a, ms in sorted(addrs, key=lambda x: int(x[0])):
-                self.motor_selector.addItem(str(a), a)
-            self.motor_selector.blockSignals(False)
+            # fallback: do nothing
         except Exception:
             pass
 
@@ -317,14 +288,8 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             pass
         # add rows for each axis
-        for axis in range(1, int(axis_count) + 1):
+        for axis in range(1, 5):
             pr = PicoMotorRow(axis)
-            # axis spin is for display only
-            try:
-                pr.spin.setValue(int(axis))
-                pr.spin.setEnabled(False)
-            except Exception:
-                pass
             # name: use stored name if present
             name = self._axis_names.get((adapter_key, int(address), int(axis))) if hasattr(self, '_axis_names') else None
             if not name:
@@ -337,42 +302,57 @@ class PicoPanel(QtWidgets.QWidget):
                         if not hasattr(self, '_axis_names'):
                             self._axis_names = {}
                         self._axis_names[(a_key, int(a_addr), int(a_axis))] = str(txt)
+                        self._save_axis_names()
                     except Exception:
                         pass
                 return _on_name_changed
 
             pr.name.textChanged.connect(_make_on_name_change(adapter_key, address, axis, pr.name))
-            # save name immediately
-            pr.name.textChanged.connect(lambda txt, a_key=adapter_key, a_addr=address, a_axis=axis: (self._axis_names.__setitem__((a_key, int(a_addr), int(a_axis)), str(txt)), self._save_axis_names()))
-            # store widget mapping for live updates
+            # initialize position to zero in cache and widget
+            try:
+                self._pos_cache[(str(adapter_key), int(address), int(axis))] = 0.0
+                pr.pos.setText(f"{0.0:.6f}")
+            except Exception:
+                pass
+            # store widget mapping for updates
             try:
                 self._axis_widgets[(str(adapter_key), int(address), int(axis))] = pr
             except Exception:
                 pass
             self.inner_layout.insertWidget(self.inner_layout.count()-1, pr)
         self.inner_layout.addStretch()
-        # persist the axis_count for this controller
+        # save names file after populating
         try:
-            key = f"{adapter_key}|{int(address)}"
-            self._axis_counts[key] = int(axis_count)
-            p = self._axis_counts_path()
-            with open(p, 'w', encoding='utf-8') as f:
-                json.dump(self._axis_counts, f, indent=2)
+            self._save_axis_names()
         except Exception:
             pass
 
-    @QtCore.pyqtSlot(str, int, int, float)
-    def position_update(self, adapter_key: str, address: int, axis: int, value: float):
-        """Slot to receive position updates from the Pico IO worker and update axis rows."""
+    @QtCore.pyqtSlot(str, int, int)
+    def _on_io_moved(self, adapter_key: str, address: int, axis: int):
+        """Handle moved signal from IO: apply pending delta to cached position and update display."""
         try:
             key = (str(adapter_key), int(address), int(axis))
-            pr = self._axis_widgets.get(key)
-            if pr is not None:
-                try:
-                    # format with moderate precision
-                    pr.pos.setText(f"{float(value):.6f}")
-                except Exception:
-                    pr.pos.setText(str(value))
+            delta = 0
+            try:
+                delta = int(self._pending_moves.pop(key, 0))
+            except Exception:
+                delta = 0
+            try:
+                cur = float(self._pos_cache.get(key, 0.0) or 0.0)
+            except Exception:
+                cur = 0.0
+            try:
+                new = float(cur + float(delta))
+            except Exception:
+                new = cur
+            # update cache and widget
+            try:
+                self._pos_cache[key] = float(new)
+                pr = self._axis_widgets.get(key)
+                if pr is not None:
+                    pr.pos.setText(f"{float(new):.6f}")
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -395,18 +375,19 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             adapter = str(self.controller_combo.currentText() or '')
 
-        # address fallback to motor_selector if not present in controller combo
+        # address fallback to controller combo text if not present in controller combo data
         if addr is None:
             try:
-                data = self.motor_selector.currentData()
-                if data is None:
-                    addr = int(self.motor_selector.currentText() or 1)
-                else:
-                    addr = int(data)
+                addr = int(self.controller_combo.currentText() or 1)
             except Exception:
                 addr = 1
-        axis = 1
-        self.request_move.emit(adapter, int(addr), int(axis), -int(steps))
+        axis = int(self.current_axis_label.text() or 1)
+        delta = -int(steps)
+        try:
+            self._pending_moves[(str(adapter), int(addr), int(axis))] = int(delta)
+        except Exception:
+            pass
+        self.request_move.emit(adapter, int(addr), int(axis), int(delta))
 
     def _on_forward(self):
         try:
@@ -427,12 +408,13 @@ class PicoPanel(QtWidgets.QWidget):
 
         if addr is None:
             try:
-                data = self.motor_selector.currentData()
-                if data is None:
-                    addr = int(self.motor_selector.currentText() or 1)
-                else:
-                    addr = int(data)
+                addr = int(self.controller_combo.currentText() or 1)
             except Exception:
                 addr = 1
-        axis = 1
-        self.request_move.emit(adapter, int(addr), int(axis), int(steps))
+        axis = int(self.current_axis_label.text() or 1)
+        delta = int(steps)
+        try:
+            self._pending_moves[(str(adapter), int(addr), int(axis))] = int(delta)
+        except Exception:
+            pass
+        self.request_move.emit(adapter, int(addr), int(axis), int(delta))
