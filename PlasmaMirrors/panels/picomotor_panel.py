@@ -34,16 +34,15 @@ class PicoPanel(QtWidgets.QWidget):
         v = QtWidgets.QVBoxLayout(self)
         v.setContentsMargins(6,6,6,6)
 
+
         # Selected Controller
         top = QtWidgets.QHBoxLayout()
         top.addWidget(QtWidgets.QLabel('Selected Controller:'))
         self.controller_combo = QtWidgets.QComboBox()
         self.controller_combo.setEditable(False)
+        # make combo wider so long labels are readable
+        self.controller_combo.setMinimumWidth(360)
         top.addWidget(self.controller_combo)
-        self.btn_open = QtWidgets.QPushButton('Open')
-        self.btn_close = QtWidgets.QPushButton('Close')
-        top.addWidget(self.btn_open)
-        top.addWidget(self.btn_close)
         v.addLayout(top)
 
         # Motor rows (scroll area)
@@ -84,9 +83,8 @@ class PicoPanel(QtWidgets.QWidget):
         self.status = QtWidgets.QPlainTextEdit(); self.status.setReadOnly(True); self.status.setFixedHeight(120)
         v.addWidget(self.status)
 
-        # connections
-        self.btn_open.clicked.connect(lambda: self.request_open.emit())
-        self.btn_close.clicked.connect(lambda: self.request_close.emit())
+        # connections (Open/Close are handled by MainWindow lifecycle now)
+        # keep signals for compatibility if other code emits them
         self.btn_back.clicked.connect(self._on_back)
         self.btn_forward.clicked.connect(self._on_forward)
         self.btn_stop.clicked.connect(lambda: self.request_stop_all.emit())
@@ -125,19 +123,26 @@ class PicoPanel(QtWidgets.QWidget):
                 ms = str(it.get('model_serial') or '')
                 mapping.setdefault(key, []).append((addr, ms))
 
-            # populate controller combo with one entry per adapter key (show primary + count)
+            # populate controller combo with one entry per address (primary + slaves).
+            # Store userData as a tuple (adapter_key, address) so each row maps to
+            # a concrete controller address.
+            entries = []
+            for k, addrs in mapping.items():
+                for a, ms in addrs:
+                    entries.append((k, int(a), ms))
+
+            # sort entries by adapter key then address
+            entries.sort(key=lambda x: (str(x[0]), int(x[1])))
+
             self.controller_combo.blockSignals(True)
             self.controller_combo.clear()
-            for k, addrs in mapping.items():
-                # find primary 1 entry label if present
-                labels = []
-                for a, ms in sorted(addrs, key=lambda x: int(x[0])):
-                    labels.append(f"{ms} (Address {a})")
-                label = ", ".join(labels)
-                self.controller_combo.addItem(label, k)
+            for k, a, ms in entries:
+                label = f"{ms} (Address {a})" if ms else f"Address {a}"
+                # userData is (adapter_key, address)
+                self.controller_combo.addItem(label, (k, int(a)))
             self.controller_combo.blockSignals(False)
 
-            # populate motor_selector with addresses for currently selected controller
+            # keep mapping for backward-compatible lookups
             self._last_mapping = mapping
             self._refresh_motor_selector_for_current_controller()
         except Exception:
@@ -147,7 +152,19 @@ class PicoPanel(QtWidgets.QWidget):
         try:
             self.motor_selector.blockSignals(True)
             self.motor_selector.clear()
-            key = self.controller_combo.currentData()
+            data = self.controller_combo.currentData()
+            # New behavior: controller combo itemData is (adapter_key, address)
+            if isinstance(data, (list, tuple)) and len(data) >= 2:
+                try:
+                    addr = int(data[1])
+                    self.motor_selector.addItem(str(addr), addr)
+                except Exception:
+                    pass
+                self.motor_selector.blockSignals(False)
+                return
+
+            # Backwards-compatible: data may be adapter_key string; populate all addresses
+            key = data
             if not key:
                 self.motor_selector.blockSignals(False)
                 return
@@ -177,18 +194,29 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             steps = 0
         # negative step
+        # Determine adapter_key and address. Prefer controller_combo userData shape (adapter,addr)
+        adapter = None
+        addr = None
         try:
-            adapter = str(self.controller_combo.currentData() or self.controller_combo.currentText())
+            cdata = self.controller_combo.currentData()
+            if isinstance(cdata, (list, tuple)) and len(cdata) >= 2:
+                adapter = str(cdata[0])
+                addr = int(cdata[1])
+            else:
+                adapter = str(cdata or self.controller_combo.currentText())
         except Exception:
             adapter = str(self.controller_combo.currentText() or '')
-        try:
-            data = self.motor_selector.currentData()
-            if data is None:
-                addr = int(self.motor_selector.currentText() or 1)
-            else:
-                addr = int(data)
-        except Exception:
-            addr = 1
+
+        # address fallback to motor_selector if not present in controller combo
+        if addr is None:
+            try:
+                data = self.motor_selector.currentData()
+                if data is None:
+                    addr = int(self.motor_selector.currentText() or 1)
+                else:
+                    addr = int(data)
+            except Exception:
+                addr = 1
         axis = 1
         self.request_move.emit(adapter, int(addr), int(axis), -int(steps))
 
@@ -197,17 +225,26 @@ class PicoPanel(QtWidgets.QWidget):
             steps = int(self.step_edit.text())
         except Exception:
             steps = 0
+        adapter = None
+        addr = None
         try:
-            adapter = str(self.controller_combo.currentData() or self.controller_combo.currentText())
+            cdata = self.controller_combo.currentData()
+            if isinstance(cdata, (list, tuple)) and len(cdata) >= 2:
+                adapter = str(cdata[0])
+                addr = int(cdata[1])
+            else:
+                adapter = str(cdata or self.controller_combo.currentText())
         except Exception:
             adapter = str(self.controller_combo.currentText() or '')
-        try:
-            data = self.motor_selector.currentData()
-            if data is None:
-                addr = int(self.motor_selector.currentText() or 1)
-            else:
-                addr = int(data)
-        except Exception:
-            addr = 1
+
+        if addr is None:
+            try:
+                data = self.motor_selector.currentData()
+                if data is None:
+                    addr = int(self.motor_selector.currentText() or 1)
+                else:
+                    addr = int(data)
+            except Exception:
+                addr = 1
         axis = 1
         self.request_move.emit(adapter, int(addr), int(axis), int(steps))
