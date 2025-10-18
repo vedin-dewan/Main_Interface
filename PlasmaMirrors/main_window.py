@@ -300,12 +300,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 def _on_pico_discovered(items: list):
                     try:
                         # items are dicts {'adapter_key','address','model_serial'}
-                        controllers = sorted(set([i.get('adapter_key') for i in items if i.get('adapter_key')]))
                         if getattr(self, 'pico_panel', None) is not None:
-                            try: self.pico_panel.set_controllers(controllers)
-                            except Exception: pass
-                            try: self.pico_panel.set_motor_rows(items)
-                            except Exception: pass
+                            try:
+                                self.pico_panel.set_discovered_items(items)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 self.pico_io.discovered.connect(_on_pico_discovered)
