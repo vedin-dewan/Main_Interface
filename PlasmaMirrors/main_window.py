@@ -11,6 +11,8 @@ from panels.fire_controls_panel import FireControlsPanel
 from device_io.kinesis_fire_io import KinesisFireIO, FireConfig
 from panels.placeholder_panel import PlaceholderPanel
 from panels.device_tabs_panel import DeviceTabsPanel
+from device_io.newfocus_pico_io import NewFocusPicoIO
+from panels.picomotor_panel import PicoPanel
 from panels.overall_control_panel import SavingPanel
 import os
 import json
@@ -245,6 +247,78 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage.homed.connect(self._on_homed)
         self.stage.bounds.connect(self._on_bounds)
         self.io_thread.start()
+
+        # After Zaber opened/discovered we want to open Picomotors; hook the opened signal
+        try:
+            def _open_pico_after_zaber():
+                try:
+                    if getattr(self, 'pico_io', None) is not None:
+                        QtCore.QMetaObject.invokeMethod(self.pico_io, 'open', QtCore.Qt.ConnectionType.QueuedConnection)
+                except Exception:
+                    pass
+            try:
+                self.stage.opened.connect(_open_pico_after_zaber)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        # --- NewFocus Picomotor I/O thread (start after Zaber opened) ---
+        try:
+            self.pico_thread = QtCore.QThread(self)
+            # dll dir can be configured via device_connections.json; fallback to vendor path
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            vendor_bin = r"C:\Program Files\New Focus\New Focus Picomotor Application\Bin"
+            self.pico_io = NewFocusPicoIO(dll_dir=vendor_bin)
+            self.pico_io.moveToThread(self.pico_thread)
+
+            # UI panel for picomotors will be created and inserted into the device_tabs pico container
+            try:
+                self.pico_panel = PicoPanel()
+                # insert into device tabs
+                try:
+                    cont = getattr(self.device_tabs, 'pico_container', None)
+                    if cont is not None:
+                        lay = QtWidgets.QVBoxLayout(cont)
+                        lay.setContentsMargins(0,0,0,0)
+                        lay.addWidget(self.pico_panel)
+                except Exception:
+                    pass
+                # forward UI requests to IO via queued connections
+                self.pico_panel.request_open.connect(lambda: QtCore.QMetaObject.invokeMethod(self.pico_io, 'open', QtCore.Qt.ConnectionType.QueuedConnection))
+                self.pico_panel.request_close.connect(lambda: QtCore.QMetaObject.invokeMethod(self.pico_io, 'close', QtCore.Qt.ConnectionType.QueuedConnection))
+                self.pico_panel.request_move.connect(lambda adapter, addr, axis, steps: QtCore.QMetaObject.invokeMethod(self.pico_io, 'relative_move', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(str, adapter), QtCore.Q_ARG(int, addr), QtCore.Q_ARG(int, axis), QtCore.Q_ARG(int, steps)))
+                self.pico_panel.request_stop_all.connect(lambda: QtCore.QMetaObject.invokeMethod(self.pico_io, 'stop_all', QtCore.Qt.ConnectionType.QueuedConnection))
+            except Exception:
+                self.pico_panel = None
+
+            # forward pico logs/errors to status panel
+            try:
+                self.pico_io.log.connect(self.status_panel.append_line)
+                self.pico_io.error.connect(self.status_panel.append_line)
+                # when discovered, populate UI lists
+                def _on_pico_discovered(items: list):
+                    try:
+                        # items are dicts {'adapter_key','address','model_serial'}
+                        controllers = sorted(set([i.get('adapter_key') for i in items if i.get('adapter_key')]))
+                        if getattr(self, 'pico_panel', None) is not None:
+                            try: self.pico_panel.set_controllers(controllers)
+                            except Exception: pass
+                            try: self.pico_panel.set_motor_rows(items)
+                            except Exception: pass
+                    except Exception:
+                        pass
+                self.pico_io.discovered.connect(_on_pico_discovered)
+            except Exception:
+                pass
+
+            # start pico thread now but do NOT call open until zaber opened
+            self.pico_thread.started.connect(lambda: None)
+            self.pico_thread.start()
+        except Exception:
+            self.pico_thread = None
+            self.pico_io = None
+            self.pico_panel = None
 
         # handle connect requests from the DeviceTabsPanel (UI thread)
         try:
@@ -1846,6 +1920,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     self._info_thread.quit()
                     self._info_thread.wait(500)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # --- Graceful shutdown for Picomotor I/O thread ---
+        try:
+            if getattr(self, 'pico_io', None) is not None:
+                try:
+                    # ask pico worker to close (queued)
+                    QtCore.QMetaObject.invokeMethod(self.pico_io, 'close', QtCore.Qt.ConnectionType.QueuedConnection)
+                except Exception:
+                    try:
+                        self.pico_io.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        try:
+            if getattr(self, 'pico_thread', None) is not None:
+                try:
+                    self.pico_thread.quit()
+                    # wait up to 1000 ms for thread to finish
+                    self.pico_thread.wait(1000)
                 except Exception:
                     pass
         except Exception:

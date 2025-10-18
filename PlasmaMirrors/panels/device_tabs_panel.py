@@ -56,6 +56,11 @@ class DeviceTabsPanel(QtWidgets.QWidget):
 
         layout.addWidget(self.tabs)
 
+        # --- Picomotors tab placeholder (MainWindow will insert real panel) ---
+        pico_layout = QtWidgets.QVBoxLayout(self.tab_pico)
+        self.pico_container = QtWidgets.QWidget()
+        pico_layout.addWidget(self.pico_container)
+
         # --- build cameras tab layout ---
         cam_layout = QtWidgets.QVBoxLayout(self.tab_cams)
         lab = QtWidgets.QLabel("Camera Info Listbox")
