@@ -92,7 +92,9 @@ class PicoPanel(QtWidgets.QWidget):
         self.btn_stop.clicked.connect(lambda: self.request_stop_all.emit())
 
         # internal state
-        self._controllers = []  # list of adapter_key strings
+        # controllers: list of tuples (adapter_key, address, model_serial)
+        self._controllers = []
+        self._last_mapping = {}
 
     def append_status(self, txt: str):
         try:
@@ -101,12 +103,60 @@ class PicoPanel(QtWidgets.QWidget):
             pass
 
     def set_controllers(self, controllers: typing.List[str]):
-        self._controllers = controllers or []
+        # controllers here may be adapter_key strings; clear the combo and add as-is
+        self._controllers = []
         self.controller_combo.blockSignals(True)
         self.controller_combo.clear()
-        for c in self._controllers:
-            self.controller_combo.addItem(str(c))
+        for c in (controllers or []):
+            self.controller_combo.addItem(str(c), c)
+            self._controllers.append((c, 1, ''))
         self.controller_combo.blockSignals(False)
+
+    def set_discovered_items(self, items: typing.List[dict]):
+        """Populate controller dropdown with 'Model Serial (Address n)' entries and motor selector with addresses.
+        items: list of dicts {'adapter_key','address','model_serial'}
+        """
+        try:
+            # build mapping adapter_key -> list of (address, model_serial)
+            mapping = {}
+            for it in items or []:
+                key = str(it.get('adapter_key') or '')
+                addr = int(it.get('address') or 0)
+                ms = str(it.get('model_serial') or '')
+                mapping.setdefault(key, []).append((addr, ms))
+
+            # populate controller combo with one entry per adapter key (show primary + count)
+            self.controller_combo.blockSignals(True)
+            self.controller_combo.clear()
+            for k, addrs in mapping.items():
+                # find primary 1 entry label if present
+                labels = []
+                for a, ms in sorted(addrs, key=lambda x: int(x[0])):
+                    labels.append(f"{ms} (Address {a})")
+                label = ", ".join(labels)
+                self.controller_combo.addItem(label, k)
+            self.controller_combo.blockSignals(False)
+
+            # populate motor_selector with addresses for currently selected controller
+            self._last_mapping = mapping
+            self._refresh_motor_selector_for_current_controller()
+        except Exception:
+            pass
+
+    def _refresh_motor_selector_for_current_controller(self):
+        try:
+            self.motor_selector.blockSignals(True)
+            self.motor_selector.clear()
+            key = self.controller_combo.currentData()
+            if not key:
+                self.motor_selector.blockSignals(False)
+                return
+            addrs = self._last_mapping.get(key, [])
+            for a, ms in sorted(addrs, key=lambda x: int(x[0])):
+                self.motor_selector.addItem(str(a), a)
+            self.motor_selector.blockSignals(False)
+        except Exception:
+            pass
 
     def set_motor_rows(self, rows: typing.List[dict]):
         # rows: list of { 'adapter_key', 'address', 'model_serial' }
@@ -127,8 +177,18 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             steps = 0
         # negative step
-        adapter = str(self.controller_combo.currentText())
-        addr = int(self.motor_selector.currentText() or 1)
+        try:
+            adapter = str(self.controller_combo.currentData() or self.controller_combo.currentText())
+        except Exception:
+            adapter = str(self.controller_combo.currentText() or '')
+        try:
+            data = self.motor_selector.currentData()
+            if data is None:
+                addr = int(self.motor_selector.currentText() or 1)
+            else:
+                addr = int(data)
+        except Exception:
+            addr = 1
         axis = 1
         self.request_move.emit(adapter, int(addr), int(axis), -int(steps))
 
@@ -137,7 +197,17 @@ class PicoPanel(QtWidgets.QWidget):
             steps = int(self.step_edit.text())
         except Exception:
             steps = 0
-        adapter = str(self.controller_combo.currentText())
-        addr = int(self.motor_selector.currentText() or 1)
+        try:
+            adapter = str(self.controller_combo.currentData() or self.controller_combo.currentText())
+        except Exception:
+            adapter = str(self.controller_combo.currentText() or '')
+        try:
+            data = self.motor_selector.currentData()
+            if data is None:
+                addr = int(self.motor_selector.currentText() or 1)
+            else:
+                addr = int(data)
+        except Exception:
+            addr = 1
         axis = 1
         self.request_move.emit(adapter, int(addr), int(axis), int(steps))

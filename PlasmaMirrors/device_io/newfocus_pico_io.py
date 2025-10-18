@@ -267,7 +267,7 @@ class NewFocusPicoIO(QtCore.QObject):
         except Exception as e:
             self.error.emit('Stop All failed: ' + str(e))
 
-    @QtCore.pyqtSlot(str)
+    @QtCore.pyqtSlot()
     def close(self, adapter_key: str | None = None):
         try:
             if adapter_key and self.deviceIO:
