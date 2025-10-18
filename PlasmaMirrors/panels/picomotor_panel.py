@@ -33,15 +33,14 @@ class PicoPanel(QtWidgets.QWidget):
         super().__init__(parent)
         v = QtWidgets.QVBoxLayout(self)
         v.setContentsMargins(6,6,6,6)
-
-
         # Selected Controller
         top = QtWidgets.QHBoxLayout()
         top.addWidget(QtWidgets.QLabel('Selected Controller:'))
         self.controller_combo = QtWidgets.QComboBox()
         self.controller_combo.setEditable(False)
-        # make combo wider so long labels are readable
-        self.controller_combo.setMinimumWidth(360)
+        # make combo shorter so the dropdown arrow is visible but still readable
+        self.controller_combo.setMinimumWidth(240)
+        self.controller_combo.setMaximumWidth(480)
         top.addWidget(self.controller_combo)
         v.addLayout(top)
 
@@ -144,7 +143,14 @@ class PicoPanel(QtWidgets.QWidget):
 
             # keep mapping for backward-compatible lookups
             self._last_mapping = mapping
+            # initialize UI for first controller if present
             self._refresh_motor_selector_for_current_controller()
+            # ensure changes to controller selection update the axis rows
+            try:
+                self.controller_combo.currentIndexChanged.disconnect(self._on_controller_changed)
+            except Exception:
+                pass
+            self.controller_combo.currentIndexChanged.connect(self._on_controller_changed)
         except Exception:
             pass
 
@@ -156,8 +162,13 @@ class PicoPanel(QtWidgets.QWidget):
             # New behavior: controller combo itemData is (adapter_key, address)
             if isinstance(data, (list, tuple)) and len(data) >= 2:
                 try:
+                    # populate axes (1..4) for selected controller
+                    for axis in range(1, 5):
+                        self.motor_selector.addItem(str(axis), axis)
+                    # also populate the axis rows area
+                    adapter = str(data[0])
                     addr = int(data[1])
-                    self.motor_selector.addItem(str(addr), addr)
+                    self._populate_axis_rows(adapter, addr, axis_count=4)
                 except Exception:
                     pass
                 self.motor_selector.blockSignals(False)
@@ -175,6 +186,12 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             pass
 
+    def _on_controller_changed(self, idx: int):
+        try:
+            self._refresh_motor_selector_for_current_controller()
+        except Exception:
+            pass
+
     def set_motor_rows(self, rows: typing.List[dict]):
         # rows: list of { 'adapter_key', 'address', 'model_serial' }
         # clear existing rows
@@ -185,6 +202,44 @@ class PicoPanel(QtWidgets.QWidget):
         for r in rows:
             pr = PicoMotorRow(r.get('address', 0))
             pr.name.setText(str(r.get('model_serial','')))
+            self.inner_layout.insertWidget(self.inner_layout.count()-1, pr)
+        self.inner_layout.addStretch()
+
+    def _populate_axis_rows(self, adapter_key: str, address: int, axis_count: int = 4):
+        """Create axis rows (1..axis_count) for the selected adapter/address.
+        Axis names are editable and stored in self._axis_names mapping.
+        """
+        # clear existing rows
+        for i in reversed(range(self.inner_layout.count())):
+            w = self.inner_layout.itemAt(i).widget()
+            if w is not None:
+                w.setParent(None)
+        # add rows for each axis
+        for axis in range(1, int(axis_count) + 1):
+            pr = PicoMotorRow(axis)
+            # axis spin is for display only
+            try:
+                pr.spin.setValue(int(axis))
+                pr.spin.setEnabled(False)
+            except Exception:
+                pass
+            # name: use stored name if present
+            name = self._axis_names.get((adapter_key, int(address), int(axis))) if hasattr(self, '_axis_names') else None
+            if not name:
+                name = f'Axis {axis}'
+            pr.name.setText(str(name))
+            # connect name edits to save mapping
+            def _make_on_name_change(a_key, a_addr, a_axis, widget):
+                def _on_name_changed(txt):
+                    try:
+                        if not hasattr(self, '_axis_names'):
+                            self._axis_names = {}
+                        self._axis_names[(a_key, int(a_addr), int(a_axis))] = str(txt)
+                    except Exception:
+                        pass
+                return _on_name_changed
+
+            pr.name.textChanged.connect(_make_on_name_change(adapter_key, address, axis, pr.name))
             self.inner_layout.insertWidget(self.inner_layout.count()-1, pr)
         self.inner_layout.addStretch()
 
