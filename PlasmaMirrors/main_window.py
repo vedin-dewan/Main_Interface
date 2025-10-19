@@ -732,7 +732,22 @@ class MainWindow(QtWidgets.QMainWindow):
                     stable_s = float(getattr(self, '_rename_stable_time', 0.3)) if getattr(self, '_rename_stable_time', None) is not None else 0.3
                     # perform burst save (blocking poll similar to single-shot rename)
                     try:
-                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s)
+                        # capture the displayed shot counter BEFORE firing so the Burst_n folder
+                        # can be named according to the current shot counter value
+                        try:
+                            shot_counter_pre = int(self.fire_panel.disp_counter.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None) else 0
+                        except Exception:
+                            shot_counter_pre = 0
+
+                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s, shot_index_pre=shot_counter_pre)
+                        # If burst save succeeded, increment the displayed shot counter by 1
+                        try:
+                            if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
+                                newval = int(self.fire_panel.disp_counter.value()) + 1
+                                self.fire_panel.disp_counter.setValue(newval)
+                                self.status_panel.append_line(f'Burst complete: shot counter incremented to {newval}')
+                        except Exception:
+                            pass
                     except Exception as e:
                         try: self.status_panel.append_line(f'Burst save failed: {e}')
                         except Exception: pass
@@ -1025,7 +1040,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try: self.status_panel.append_line(f"Rename exception: {e}")
             except Exception: pass
 
-    def _handle_burst_save(self, outdir: str, burst_rel: str, tokens: list, experiment: str, timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3):
+    def _handle_burst_save(self, outdir: str, burst_rel: str, tokens: list, experiment: str, timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3, shot_index_pre: int = None):
         """Create the burst folder and move/rename files matching tokens into it.
 
         Behavior:
@@ -1052,21 +1067,39 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
                 return
 
-            # find next Burst_n
+            # find next Burst_n unless caller provided shot_index_pre to select folder
             try:
-                existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
+                if shot_index_pre is not None:
+                    # use provided shot index as the burst folder number
+                    nextn = int(shot_index_pre)
+                else:
+                    existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
+                    maxn = -1
+                    for d in existing:
+                        try:
+                            n = int(d.split('_', 1)[1])
+                            if n > maxn:
+                                maxn = n
+                        except Exception:
+                            continue
+                    nextn = maxn + 1
+                burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
             except Exception:
-                existing = []
-            maxn = -1
-            for d in existing:
                 try:
-                    n = int(d.split('_', 1)[1])
-                    if n > maxn:
-                        maxn = n
+                    # fallback to next available numbering
+                    existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
                 except Exception:
-                    continue
-            nextn = maxn + 1
-            burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
+                    existing = []
+                maxn = -1
+                for d in existing:
+                    try:
+                        n = int(d.split('_', 1)[1])
+                        if n > maxn:
+                            maxn = n
+                    except Exception:
+                        continue
+                nextn = maxn + 1
+                burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
             try:
                 os.makedirs(burst_dir, exist_ok=False)
             except Exception:
