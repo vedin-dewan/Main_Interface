@@ -121,6 +121,8 @@ class PicoPanel(QtWidgets.QWidget):
         self._pos_cache = {}
         # pending moves mapping: (adapter,addr,axis) -> pending delta (int)
         self._pending_moves = {}
+        # per-move timers to detect missing moved events: (adapter,addr,axis) -> QTimer
+        self._move_timers = {}
     def set_controllers(self, controllers: typing.List[str]):
         # controllers here may be adapter_key strings; clear the combo and add as-is
         self._controllers = []
@@ -443,8 +445,26 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             axis = 1
         delta = -int(steps)
+        key = (str(adapter), int(addr), int(axis))
         try:
-            self._pending_moves[(str(adapter), int(addr), int(axis))] = int(delta)
+            self._pending_moves[key] = int(delta)
+        except Exception:
+            pass
+        # start a timeout timer (5s) for this requested move; if no moved signal arrives, emit error
+        try:
+            # cancel existing timer for this key
+            oldt = self._move_timers.pop(key, None)
+            if oldt is not None:
+                try:
+                    oldt.stop()
+                    oldt.deleteLater()
+                except Exception:
+                    pass
+            t = QtCore.QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(lambda k=key: self._on_move_timeout(k))
+            t.start(5000)
+            self._move_timers[key] = t
         except Exception:
             pass
         self.request_move.emit(adapter, int(addr), int(axis), int(delta))
@@ -476,8 +496,58 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             axis = 1
         delta = int(steps)
+        key = (str(adapter), int(addr), int(axis))
         try:
-            self._pending_moves[(str(adapter), int(addr), int(axis))] = int(delta)
+            self._pending_moves[key] = int(delta)
+        except Exception:
+            pass
+        # start/replace timeout timer for this move
+        try:
+            oldt = self._move_timers.pop(key, None)
+            if oldt is not None:
+                try:
+                    oldt.stop()
+                    oldt.deleteLater()
+                except Exception:
+                    pass
+            t = QtCore.QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(lambda k=key: self._on_move_timeout(k))
+            t.start(5000)
+            self._move_timers[key] = t
         except Exception:
             pass
         self.request_move.emit(adapter, int(addr), int(axis), int(delta))
+
+    def _on_move_timeout(self, key):
+        """Called when a requested move did not result in a 'moved' signal within the timeout."""
+        try:
+            # cleanup timer
+            try:
+                t = self._move_timers.pop(key, None)
+                if t is not None:
+                    try:
+                        t.stop()
+                        t.deleteLater()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # pop pending delta if present
+            try:
+                delta = int(self._pending_moves.pop(key, 0))
+            except Exception:
+                delta = 0
+            # compose error message
+            try:
+                dk = int(key[1])
+                dax = int(key[2])
+                try:
+                    dstr = f"{int(delta):+d}"
+                except Exception:
+                    dstr = str(delta)
+                self.append_line(f"Move timeout: Address {dk} Axis {dax} — no movement detected (\u2206={dstr} steps)")
+            except Exception:
+                self.append_line("Move timeout: move not confirmed by controller")
+        except Exception:
+            pass
