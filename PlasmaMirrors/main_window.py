@@ -844,16 +844,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_reset_counter(self):
         """Reset shot counter and per-shot internal state on user request."""
         try:
-            self.fire_panel.disp_counter.setValue(0)
+            # Use centralized setter which also persists
+            try:
+                self._set_shot_counter(0)
+            except Exception:
+                # fallback to direct set
+                try: self.fire_panel.disp_counter.setValue(0)
+                except Exception: pass
             self._per_shot_current = 0
             self._per_shot_active = False
             try: self._per_shot_target = None
             except Exception: pass
-            # persist reset value
-            try:
-                self._save_shot_counter(0)
-            except Exception:
-                pass
         except Exception:
             pass
 
@@ -861,24 +862,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_set_counter(self, value: int):
         """Called when the FireControlsPanel Configure->Save emits a new counter value."""
         try:
-            # update the UI display
+            # Centralized setter persists by default
             try:
-                if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
-                    self.fire_panel.disp_counter.setValue(int(value))
+                self._set_shot_counter(int(value))
             except Exception:
-                pass
-            # update internal per-shot current tally so per-shot sequences start from this value
-            try:
-                self._per_shot_current = int(value)
-            except Exception:
-                pass
+                try:
+                    if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
+                        self.fire_panel.disp_counter.setValue(int(value))
+                except Exception:
+                    pass
             try:
                 self.status_panel.append_line(f"Shot counter set to {int(value)} via Configure")
-            except Exception:
-                pass
-            # persist the value to disk for next session
-            try:
-                self._save_shot_counter(int(value))
             except Exception:
                 pass
         except Exception:
@@ -914,12 +908,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 v = int(val)
             except Exception:
                 return
-            # apply to UI and runtime
+            # apply to UI and runtime without persisting (we just loaded it)
             try:
-                if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
-                    self.fire_panel.disp_counter.setValue(v)
+                self._set_shot_counter(v, persist=False)
             except Exception:
-                pass
+                try:
+                    if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
+                        self.fire_panel.disp_counter.setValue(v)
+                except Exception:
+                    pass
             try:
                 self._per_shot_current = v
             except Exception:
@@ -948,6 +945,34 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
         except Exception:
             pass
+
+    def _set_shot_counter(self, value: int, persist: bool = True) -> None:
+        """Central setter for the shot counter.
+
+        Updates UI and runtime counter and optionally persists to disk. This ensures the
+        JSON file is updated whenever the UI counter changes.
+        """
+        try:
+            v = int(value)
+        except Exception:
+            return
+        try:
+            if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
+                try:
+                    self.fire_panel.disp_counter.setValue(v)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            self._per_shot_current = v
+        except Exception:
+            pass
+        if persist:
+            try:
+                self._save_shot_counter(v)
+            except Exception:
+                pass
 
     def _on_single_shot_done(self, event_ts: float = None):
         """Called when the fire worker signals that a single shot/pulse finished.
