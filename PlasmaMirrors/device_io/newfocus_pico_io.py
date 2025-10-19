@@ -20,6 +20,10 @@ class NewFocusPicoIO(QtCore.QObject):
 
     log = QtCore.pyqtSignal(str)
     error = QtCore.pyqtSignal(str)
+    # emitted only at the end of a successful open with number of adapters discovered
+    opened_count = QtCore.pyqtSignal(int)
+    # initialization-time errors (open/import failures) should be reported separately
+    init_error = QtCore.pyqtSignal(str)
     opened = QtCore.pyqtSignal()
     discovered = QtCore.pyqtSignal(list)  # list of dicts: { 'adapter_key', 'address', 'model_serial' }
     # moved provides the new position as float: moved(adapter_key, address, axis, position)
@@ -51,7 +55,8 @@ class NewFocusPicoIO(QtCore.QObject):
             try:
                 import clr
             except Exception as e:
-                self.error.emit('pythonnet (clr) not available: ' + str(e))
+                # initialization failure: surface to global status panel via init_error
+                self.init_error.emit('pythonnet (clr) not available: ' + str(e))
                 return
 
             # add references
@@ -141,7 +146,11 @@ class NewFocusPicoIO(QtCore.QObject):
             self._open = True
             self.opened.emit()
             self.discovered.emit(adapters)
-            self.log.emit(f'Picomotor I/O opened; adapters: {len(keys)}')
+            # signal global initialization success (main_window will show this once)
+            try:
+                self.opened_count.emit(int(len(keys)))
+            except Exception:
+                pass
             # Read initial positions for each discovered adapter/address and axes 1..4
             try:
                 for it in adapters:
@@ -193,11 +202,16 @@ class NewFocusPicoIO(QtCore.QObject):
                                     pass
                         except Exception:
                             pass
+            except Exception as e:
+                # initialization failure: surface to global status panel
+                self.init_error.emit('Open failed: ' + str(e))
+        except Exception as e:
+            # Catch any unexpected exception during open and report as init_error
+            try:
+                self.init_error.emit('Open failed: ' + str(e))
             except Exception:
                 pass
-        except Exception as e:
-            self.error.emit('Open failed: ' + str(e))
-
+            return
     @QtCore.pyqtSlot(str, int, int, int)
     def relative_move(self, adapter_key: str, address: int, axis: int, steps: int):
         """Perform a relative move on the given adapter/address/axis (steps).
@@ -369,9 +383,7 @@ class NewFocusPicoIO(QtCore.QObject):
             except Exception:
                 pass
 
-    @QtCore.pyqtSlot(str, int, int)
     # Note: position querying and emission removed — UI handles positions locally.
-
     @QtCore.pyqtSlot(str, int)
     def stop_motion(self, adapter_key: str, address: int):
         try:

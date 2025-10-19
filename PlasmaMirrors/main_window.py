@@ -298,17 +298,29 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 self.pico_panel = None
 
-            # forward pico logs/errors to status panel
+            # Route picomotor signals:
+            # - opened_count and init_error should go to the global status panel
+            # - general log/error messages should appear in the Picomotors panel status area
             try:
-                self.pico_io.log.connect(self.status_panel.append_line)
-                self.pico_io.error.connect(self.status_panel.append_line)
-                # also route pico-specific logs into the Picomotors panel status area when available
+                try:
+                    # emit a single concise global message when opened_count arrives
+                    self.pico_io.opened_count.connect(lambda n: self.status_panel.append_line(f"Picomotor I/O opened; adapters: {n}"))
+                except Exception:
+                    pass
+                try:
+                    # initialization-time errors should be visible globally
+                    self.pico_io.init_error.connect(self.status_panel.append_line)
+                except Exception:
+                    pass
+
+                # route general logs/errors to the Picomotors panel when available
                 try:
                     if getattr(self, 'pico_panel', None) is not None:
                         self.pico_io.log.connect(self.pico_panel.append_line)
                         self.pico_io.error.connect(self.pico_panel.append_line)
                 except Exception:
                     pass
+
                 # when discovered, populate UI lists
                 def _on_pico_discovered(items: list):
                     try:
