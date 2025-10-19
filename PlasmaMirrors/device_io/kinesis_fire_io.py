@@ -81,9 +81,12 @@ class KinesisFireIO(QtCore.QObject):
         self.out_task = None
         self.in_task = None
         self.serial: Optional[str] = None
-
         # runtime state
-        self._mode: str = "single"         # "continuous" | "single" | "burst"
+        # Start in a safe manual state (manual operating mode, shutter off)
+        # instead of auto-starting in single-shot mode with shutter open.
+        # Expose 'continuous' as the public mode name to indicate manual/continuous
+        # operating mode to UIs.
+        self._mode: str = "continuous"         # "continuous" | "single" | "burst"
         self._num_shots: int = 1
         self._fire_requested: bool = False
         self._burst_count: int = 0
@@ -94,7 +97,7 @@ class KinesisFireIO(QtCore.QObject):
         self._single_remaining: int = 0
         # one-shot state
         self._one_shot_active = False
-    # one-shot state complete
+        # one-shot state complete
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
     @QtCore.pyqtSlot()
@@ -122,12 +125,11 @@ class KinesisFireIO(QtCore.QObject):
             time.sleep(0.2)
             self.dev.EnableDevice()
             time.sleep(0.1)
-            # Default safe state
-            self._set_mode_internal("triggered")
-            if self.cfg.start_enabled:
-                self._set_shutter_on()
-            else:
-                self._set_shutter_off()
+            # Default safe state: place the KSC101 in manual mode and ensure
+            # the shutter is closed/off. This avoids leaving the solenoid
+            # energized or in single-shot mode on application start.
+            self._set_mode_internal("manual")
+            self._set_shutter_off()
             self.connected.emit(self.serial)
             self.log.emit(f"KSC101 connected (serial {self.serial}).")
         except Exception as e:
