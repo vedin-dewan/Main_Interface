@@ -59,12 +59,12 @@ class PicoPanel(QtWidgets.QWidget):
         self.scroll.setWidget(self.inner)
         v.addWidget(self.scroll, 1)
 
-        # Selected motor controls (axes are fixed 1..4)
+        # Selected motor controls
         mid = QtWidgets.QHBoxLayout()
         mid.addWidget(QtWidgets.QLabel('Selected Motor:'))
-        self.current_axis_label = QtWidgets.QLabel('1')
-        self.current_axis_label.setFixedWidth(20)
-        mid.addWidget(self.current_axis_label)
+        self.motor_selector = QtWidgets.QComboBox()
+        self.motor_selector.setFixedWidth(80)
+        mid.addWidget(self.motor_selector)
         self.light = RoundLight(14, '#22cc66', '#2b2b2b')
         mid.addWidget(self.light)
         self.btn_stop = QtWidgets.QPushButton('Stop')
@@ -92,8 +92,7 @@ class PicoPanel(QtWidgets.QWidget):
         self.status.setFixedHeight(120)
         v.addWidget(self.status)
 
-        # connections (Open/Close are handled by MainWindow lifecycle now)
-        # keep signals for compatibility if other code emits them
+        # connections
         self.btn_back.clicked.connect(self._on_back)
         self.btn_forward.clicked.connect(self._on_forward)
         self.btn_stop.clicked.connect(lambda: self.request_stop_all.emit())
@@ -145,7 +144,7 @@ class PicoPanel(QtWidgets.QWidget):
                 for a, ms in addrs:
                     entries.append((k, int(a), ms))
 
-            # sort entries by adapter key then address
+            # sort entries by adapter key then numeric address
             entries.sort(key=lambda x: (str(x[0]), int(x[1])))
 
             self.controller_combo.blockSignals(True)
@@ -158,8 +157,20 @@ class PicoPanel(QtWidgets.QWidget):
 
             # keep mapping for backward-compatible lookups
             self._last_mapping = mapping
-            # initialize UI for first controller if present
+            # populate combo now (entries already sorted by address)
+            self.controller_combo.blockSignals(True)
+            self.controller_combo.clear()
+            for k, a, ms in entries:
+                label = f"{ms} (Address {a})" if ms else f"Address {a}"
+                self.controller_combo.addItem(label, (k, int(a)))
+            self.controller_combo.blockSignals(False)
+            # refresh UI for first controller if present
             self._refresh_motor_selector_for_current_controller()
+            # log discovery
+            try:
+                self.append_line(f"Discovered Devices: {len(entries)}")
+            except Exception:
+                pass
             # ensure changes to controller selection update the axis rows
             try:
                 self.controller_combo.currentIndexChanged.disconnect(self._on_controller_changed)
@@ -171,7 +182,7 @@ class PicoPanel(QtWidgets.QWidget):
 
     # persistence for axis names
     def _axis_names_path(self) -> str:
-        return os.path.join(os.path.expanduser('~'), '.plasmamirrors_pico_axis_names.json')
+        return self._names_file
 
     def _axis_counts_path(self) -> str:
         return os.path.join(os.path.expanduser('~'), '.plasmamirrors_pico_axis_counts.json')
@@ -202,8 +213,15 @@ class PicoPanel(QtWidgets.QWidget):
                 out_key = f"{k}|{addr}|{axis}"
                 out[out_key] = name
             p = self._axis_names_path()
+            os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, 'w', encoding='utf-8') as f:
                 json.dump(out, f, indent=2)
+        except Exception:
+            pass
+
+    def append_line(self, txt: str):
+        try:
+            self.status.appendPlainText(str(txt))
         except Exception:
             pass
 
@@ -351,6 +369,25 @@ class PicoPanel(QtWidgets.QWidget):
                 pr = self._axis_widgets.get(key)
                 if pr is not None:
                     pr.pos.setText(f"{float(new):.6f}")
+                # append an explicit move-complete message to the picomotors status area
+                try:
+                    # format delta with sign
+                    try:
+                        delta_int = int(delta)
+                    except Exception:
+                        delta_int = 0
+                    delta_str = f"{delta_int:+d}"
+                    # format new position: prefer integer if whole, otherwise 6-decimal float
+                    try:
+                        if float(new).is_integer():
+                            new_str = str(int(float(new)))
+                        else:
+                            new_str = f"{float(new):.6f}"
+                    except Exception:
+                        new_str = f"{float(new):.6f}"
+                    self.append_line(f"Move complete: Address {int(address)} Axis {int(axis)} \u2206={delta_str} steps — new pos {new_str}")
+                except Exception:
+                    pass
             except Exception:
                 pass
         except Exception:
@@ -381,7 +418,10 @@ class PicoPanel(QtWidgets.QWidget):
                 addr = int(self.controller_combo.currentText() or 1)
             except Exception:
                 addr = 1
-        axis = int(self.current_axis_label.text() or 1)
+        try:
+            axis = int(self.motor_selector.currentData() or self.motor_selector.currentText() or 1)
+        except Exception:
+            axis = 1
         delta = -int(steps)
         try:
             self._pending_moves[(str(adapter), int(addr), int(axis))] = int(delta)
@@ -411,7 +451,10 @@ class PicoPanel(QtWidgets.QWidget):
                 addr = int(self.controller_combo.currentText() or 1)
             except Exception:
                 addr = 1
-        axis = int(self.current_axis_label.text() or 1)
+        try:
+            axis = int(self.motor_selector.currentData() or self.motor_selector.currentText() or 1)
+        except Exception:
+            axis = 1
         delta = int(steps)
         try:
             self._pending_moves[(str(adapter), int(addr), int(axis))] = int(delta)

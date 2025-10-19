@@ -76,6 +76,7 @@ class NewFocusPicoIO(QtCore.QObject):
 
             # Discover devices (5 attempts, 5000 ms wait)
             try:
+                self.log.emit('Discovering Devices...')
                 self.deviceIO.DiscoverDevices(5, 5000)
             except Exception as e:
                 self.log.emit('DiscoverDevices raised: ' + str(e))
@@ -209,22 +210,6 @@ class NewFocusPicoIO(QtCore.QObject):
                 self.log.emit('RelativeMove: move issued (motion-done poll timed out)')
             else:
                 self.log.emit('RelativeMove: complete')
-            # Query position only if motion reported as done
-            if done:
-                try:
-                    # Use the query helper (which emits the position signal)
-                    self.query_position(adapter_key, int(address), int(axis))
-                except Exception:
-                    # fallback: direct GetPosition call and emit
-                    try:
-                        out = self.cmd.GetPosition(adapter_key, int(address), int(axis))
-                        if out is not None:
-                            if isinstance(out, (list, tuple)) and len(out) >= 1:
-                                out = out[0]
-                            val = float(out)
-                            self.position.emit(str(adapter_key), int(address), int(axis), float(val))
-                    except Exception:
-                        pass
         except Exception as e:
             self.error.emit('RelativeMove failed: ' + str(e))
             try:
