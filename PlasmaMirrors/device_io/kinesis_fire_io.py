@@ -376,22 +376,30 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"NI-DAQ write failed: {e}")
 
     def _read_trigger(self) -> Optional[int]:
-        if self.in_task is None:
-            return None
+        """Read the trigger line using a short-lived NI-DAQ Task.
+
+        This is more robust against task lifetime/driver quirks. Returns 0 or 1 on success.
+        On failure, returns the previous known trigger state if available, otherwise a safe default (1).
+        """
         try:
-            return int(bool(self.in_task.read()))
+            # create a transient Task for a single read (robust across driver issues)
+            with nidaqmx.Task() as t:
+                t.di_channels.add_di_chan(self.cfg.input_trigger)
+                val = t.read()
+                return int(bool(val))
         except Exception as e:
-            self.error.emit(f"NI-DAQ read failed (will retry): {e}")
+            # Log the read failure and attempt to preserve continuity by returning the last known value
             try:
-                self.in_task.close()
+                self.error.emit(f"NI-DAQ read failed (ephemeral task): {e}")
             except Exception:
                 pass
             try:
-                self.in_task = nidaqmx.Task()
-                self.in_task.di_channels.add_di_chan(self.cfg.input_trigger)
+                if self._last_trig is not None:
+                    return int(self._last_trig)
             except Exception:
-                self.in_task = None
-            return None
+                pass
+            # Fallback safe default: 1 (so a subsequent falling edge will be detected)
+            return 1
 
     # -------- single-sequence state machine (non-blocking) --------
     def _start_single_sequence(self, n: int):
