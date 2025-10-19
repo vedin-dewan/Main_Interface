@@ -511,9 +511,29 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             pass
 
     def _on_stage_selected(self, idx):
-        if idx < 0 or idx >= len(self._stages):
+        if idx < 0:
             return
-        s = self._stages[idx]
+        # If we're in configure mode and have a staged copy, show staged values
+        try:
+            if getattr(self, '_configure_mode', False) and getattr(self, '_staged_stages', None) is not None:
+                staged = self._staged_stages
+                if 0 <= idx < len(staged):
+                    s = staged[idx]
+                else:
+                    # fallback to persisted if index out of range
+                    if 0 <= idx < len(getattr(self, '_stages', [])):
+                        s = self._stages[idx]
+                    else:
+                        return
+            else:
+                if idx < 0 or idx >= len(self._stages):
+                    return
+                s = self._stages[idx]
+        except Exception:
+            try:
+                s = self._stages[idx]
+            except Exception:
+                return
         # Populate form fields without emitting change signals. Several widgets
         # are connected to autosave handlers; setting them programmatically
         # would trigger _save_stages and cause the MainWindow to rebuild the
@@ -790,6 +810,10 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                     self.btn_stage_add.setEnabled(False)
                     self.btn_stage_remove.setEnabled(False)
                     self.btn_stage_save.setEnabled(False)
+                    try:
+                        self.btn_stage_configure.setText('Configure')
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 return
@@ -883,6 +907,10 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                     self.btn_stage_add.setEnabled(False)
                     self.btn_stage_remove.setEnabled(False)
                     self.btn_stage_save.setEnabled(False)
+                    try:
+                        self.btn_stage_configure.setText('Configure')
+                    except Exception:
+                        pass
                 except Exception:
                     pass
             else:
