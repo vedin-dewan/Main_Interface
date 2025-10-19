@@ -5,7 +5,8 @@ class FireControlsPanel(QtWidgets.QWidget):
     # GUI -> backend
     request_mode  = QtCore.pyqtSignal(str)   # "continuous" | "single" | "burst"
     request_shots = QtCore.pyqtSignal(int)   # applies to both Single and Burst
-    request_reset = QtCore.pyqtSignal()      # reset shot counter on request
+    request_reset = QtCore.pyqtSignal()      # kept for backwards-compat (not used by UI anymore)
+    request_set_counter = QtCore.pyqtSignal(int)  # set shot counter value (from Configure/Save)
     request_fire  = QtCore.pyqtSignal()      # start action
 
     def __init__(self, parent=None):
@@ -90,9 +91,9 @@ class FireControlsPanel(QtWidgets.QWidget):
         counter_row = QtWidgets.QHBoxLayout()
         counter_row.addWidget(lab_counter)
         counter_row.addWidget(self.disp_counter)
-        # Reset button next to counter
-        self.btn_reset = QtWidgets.QPushButton("Reset")
-        self.btn_reset.setFixedWidth(70)
+        # Configure button next to counter — toggles edit mode for the counter
+        self.btn_reset = QtWidgets.QPushButton("Configure")
+        self.btn_reset.setFixedWidth(90)
         counter_row.addWidget(self.btn_reset)
         counter_row.addStretch(1)
         # move counter to row 3 because we added the post-auto row
@@ -137,7 +138,9 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.rb_burst.toggled.connect(lambda on: on and self._emit_mode("burst"))
         self.spin_shots.editingFinished.connect(self._emit_shots)
         self.btn_fire.clicked.connect(self.request_fire)
-        self.btn_reset.clicked.connect(lambda: self.request_reset.emit())
+        # Configure/Save toggle behavior
+        self._configure_mode = False
+        self.btn_reset.clicked.connect(self._on_configure_clicked)
 
         # ensure initial visual state for the fire button (continuous by default)
         try:
@@ -205,3 +208,48 @@ class FireControlsPanel(QtWidgets.QWidget):
 
     def _emit_shots(self):
         self.request_shots.emit(int(self.spin_shots.value()))
+
+    def _on_configure_clicked(self):
+        """Toggle configure mode: allow editing the shot counter, then Save emits request_set_counter."""
+        try:
+            if not self._configure_mode:
+                # Enter configure mode: make counter editable and change button to Save
+                self._configure_mode = True
+                try:
+                    self.disp_counter.setReadOnly(False)
+                except Exception:
+                    pass
+                try:
+                    # allow using the arrow buttons for convenience
+                    self.disp_counter.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.UpDownArrows)
+                except Exception:
+                    pass
+                try:
+                    self.btn_reset.setText('Save')
+                except Exception:
+                    pass
+            else:
+                # Save: emit the new counter value and return to read-only mode
+                try:
+                    val = int(self.disp_counter.value())
+                except Exception:
+                    val = 0
+                try:
+                    self.request_set_counter.emit(val)
+                except Exception:
+                    pass
+                try:
+                    self.disp_counter.setReadOnly(True)
+                except Exception:
+                    pass
+                try:
+                    self.disp_counter.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+                except Exception:
+                    pass
+                try:
+                    self.btn_reset.setText('Configure')
+                except Exception:
+                    pass
+                self._configure_mode = False
+        except Exception:
+            pass

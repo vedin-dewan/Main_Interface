@@ -106,6 +106,11 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             # fallback default
             self._rename_max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)
+        # Load persisted shot counter (if present)
+        try:
+            self._load_shot_counter()
+        except Exception:
+            pass
         self.pm_panel= PMPanel()
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
@@ -385,6 +390,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # wire Reset Counter button -> reset internal state and UI
         try:
             self.fire_panel.request_reset.connect(self._on_reset_counter)
+        except Exception:
+            pass
+        # handle Configure/Save counter change from the FireControlsPanel
+        try:
+            self.fire_panel.request_set_counter.connect(lambda v: QtCore.QMetaObject.invokeMethod(self, '_on_set_counter', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, int(v))))
         except Exception:
             pass
         # forward Fire to IO and also handle UI-side bookkeeping in MainWindow
@@ -839,6 +849,103 @@ class MainWindow(QtWidgets.QMainWindow):
             self._per_shot_active = False
             try: self._per_shot_target = None
             except Exception: pass
+            # persist reset value
+            try:
+                self._save_shot_counter(0)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    @QtCore.pyqtSlot(int)
+    def _on_set_counter(self, value: int):
+        """Called when the FireControlsPanel Configure->Save emits a new counter value."""
+        try:
+            # update the UI display
+            try:
+                if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
+                    self.fire_panel.disp_counter.setValue(int(value))
+            except Exception:
+                pass
+            # update internal per-shot current tally so per-shot sequences start from this value
+            try:
+                self._per_shot_current = int(value)
+            except Exception:
+                pass
+            try:
+                self.status_panel.append_line(f"Shot counter set to {int(value)} via Configure")
+            except Exception:
+                pass
+            # persist the value to disk for next session
+            try:
+                self._save_shot_counter(int(value))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    # ---- Shot counter persistence helpers ----
+    def _shot_counter_path(self) -> str:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        params_dir = os.path.join(base_dir, 'parameters')
+        try:
+            os.makedirs(params_dir, exist_ok=True)
+        except Exception:
+            pass
+        return os.path.join(params_dir, 'shot_counter.json')
+
+    def _load_shot_counter(self) -> None:
+        """Load persisted shot counter into UI and runtime state. If missing, do nothing."""
+        try:
+            path = self._shot_counter_path()
+            if not os.path.exists(path):
+                return
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                return
+            if not isinstance(data, dict):
+                return
+            val = data.get('shot_counter')
+            if val is None:
+                return
+            try:
+                v = int(val)
+            except Exception:
+                return
+            # apply to UI and runtime
+            try:
+                if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
+                    self.fire_panel.disp_counter.setValue(v)
+            except Exception:
+                pass
+            try:
+                self._per_shot_current = v
+            except Exception:
+                pass
+            try:
+                self.status_panel.append_line(f"Loaded shot counter = {v} from disk")
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _save_shot_counter(self, value: int) -> None:
+        """Persist shot counter value to parameters/shot_counter.json (best-effort)."""
+        try:
+            path = self._shot_counter_path()
+            payload = {'shot_counter': int(value)}
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(payload, f, indent=2)
+                try:
+                    self.status_panel.append_line(f"Saved shot counter = {int(value)}")
+                except Exception:
+                    pass
+            except Exception as e:
+                try: self.status_panel.append_line(f"Failed to save shot counter: {e}")
+                except Exception: pass
         except Exception:
             pass
 
