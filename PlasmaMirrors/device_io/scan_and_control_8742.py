@@ -18,6 +18,7 @@ addresses and axis numbers.
 
 import os
 import sys
+import time
 
 # Optional: first CLI arg is the folder containing DeviceIOLib.dll and CmdLib8742.dll
 dll_dir = r"C:\Program Files\New Focus\New Focus Picomotor Application\Bin"#sys.argv[1] if len(sys.argv) > 1 else None
@@ -90,9 +91,14 @@ print("Slave model ad serial number (address 2):", cmd.GetModelSerial(adapter_ke
 # moves axis 1 on address addresses[0] by +10 steps. Uncomment the next line to run.
 addr = 1
 motor_axes = 2
-steps = -100
+steps = +100
 move = cmd.RelativeMove(adapter_key, addr, motor_axes,steps)
-print(move)
+time.sleep(5)  # wait for move to complete 
+
+moved = cmd.GetMotionDone(adapter_key,addr,motor_axes,True)
+print(f'motion done: {moved}')
+pos = cmd.GetPosition(adapter_key, addr, motor_axes)
+print(f'Moved address {addr} axis {motor_axes} by {steps} steps to position {pos}')
 # Close and shutdown
 deviceIO.Close(adapter_key)
 cmd.Shutdown()
