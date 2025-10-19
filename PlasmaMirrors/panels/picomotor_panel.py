@@ -78,6 +78,12 @@ class PicoPanel(QtWidgets.QWidget):
         self.btn_stop = QtWidgets.QPushButton('Stop')
         self.btn_stop.setStyleSheet('background:#7a2f2e; color:white;')
         mid.addWidget(self.btn_stop)
+        # Configure / Save buttons
+        self.btn_configure = QtWidgets.QPushButton('Configure')
+        self.btn_save = QtWidgets.QPushButton('Save')
+        self.btn_save.setEnabled(False)
+        mid.addWidget(self.btn_configure)
+        mid.addWidget(self.btn_save)
         mid.addStretch()
         v.addLayout(mid)
 
@@ -104,6 +110,11 @@ class PicoPanel(QtWidgets.QWidget):
         self.btn_back.clicked.connect(self._on_back)
         self.btn_forward.clicked.connect(self._on_forward)
         self.btn_stop.clicked.connect(lambda: self.request_stop_all.emit())
+        # configure/save behavior
+        self._configure_mode = False
+        self._staged_names = {}  # (adapter,addr,axis) -> name during configure
+        self.btn_configure.clicked.connect(self._on_configure_clicked)
+        self.btn_save.clicked.connect(self._on_save_clicked)
 
         # No periodic polling: UI tracks positions locally and updates on move events.
 
@@ -324,14 +335,29 @@ class PicoPanel(QtWidgets.QWidget):
             if not name:
                 name = f'Axis {axis}'
             pr.name.setText(str(name))
-            # connect name edits to save mapping
+            # connect name edits depending on configure mode
             def _make_on_name_change(a_key, a_addr, a_axis, widget):
                 def _on_name_changed(txt):
                     try:
-                        if not hasattr(self, '_axis_names'):
-                            self._axis_names = {}
-                        self._axis_names[(a_key, int(a_addr), int(a_axis))] = str(txt)
-                        self._save_axis_names()
+                        key = (a_key, int(a_addr), int(a_axis))
+                        if self._configure_mode:
+                            # stage change
+                            self._staged_names[key] = str(txt)
+                            # enable save button when staged differ from persisted
+                            try:
+                                persisted = self._axis_names.get(key, '')
+                                changed = (str(txt) != str(persisted))
+                                self.btn_save.setEnabled(changed)
+                            except Exception:
+                                self.btn_save.setEnabled(True)
+                        else:
+                            # ignore edits when not in configure mode; revert
+                            try:
+                                widget.blockSignals(True)
+                                widget.setText(str(self._axis_names.get(key, f'Axis {a_axis}')))
+                                widget.blockSignals(False)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 return _on_name_changed
@@ -364,6 +390,122 @@ class PicoPanel(QtWidgets.QWidget):
         # save names file after populating
         try:
             self._save_axis_names()
+        except Exception:
+            pass
+
+    def _on_configure_clicked(self):
+        """Toggle configure mode: when active, allow name edits; when leaving, cancel staged changes."""
+        try:
+            self._configure_mode = not bool(self._configure_mode)
+            if self._configure_mode:
+                # enter configure mode: enable edits and clear staged buffer
+                self.btn_configure.setText('Cancel')
+                self._staged_names = {}
+                # make all name fields editable
+                try:
+                    for k, w in (self._axis_widgets or {}).items():
+                        try:
+                            w.name.setReadOnly(False)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                # disable save until a change occurs
+                try:
+                    self.btn_save.setEnabled(False)
+                except Exception:
+                    pass
+            else:
+                # cancel configure mode: revert staged edits
+                self.btn_configure.setText('Configure')
+                try:
+                    for k, w in (self._axis_widgets or {}).items():
+                        try:
+                            persisted = self._axis_names.get(k, None)
+                            if persisted is None:
+                                # default label
+                                _, _, aidx = k
+                                persisted = f'Axis {aidx}'
+                            w.name.blockSignals(True)
+                            w.name.setText(str(persisted))
+                            w.name.blockSignals(False)
+                            w.name.setReadOnly(True)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    self._staged_names = {}
+                    self.btn_save.setEnabled(False)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _on_save_clicked(self):
+        """Show a confirmation dialog listing staged changes; on confirm, persist and exit configure mode."""
+        try:
+            if not self._staged_names:
+                return
+            # Build summary text
+            lines = []
+            for k, v in sorted(self._staged_names.items(), key=lambda x: (str(x[0][0]), x[0][1], x[0][2])):
+                old = self._axis_names.get(k, f"Axis {k[2]}")
+                new = v
+                if str(old) != str(new):
+                    lines.append(f"Addr {k[1]} Axis {k[2]}: '{old}' -> '{new}'")
+            if not lines:
+                # nothing changed
+                try:
+                    QtWidgets.QMessageBox.information(self, 'No changes', 'No name changes to save.')
+                except Exception:
+                    pass
+                return
+            msg = "The following changes will be saved:\n\n" + "\n".join(lines)
+            dlg = QtWidgets.QMessageBox(self)
+            dlg.setIcon(QtWidgets.QMessageBox.Icon.Question)
+            dlg.setWindowTitle('Confirm Save Pico Names')
+            dlg.setText('Save Pico motor name changes?')
+            dlg.setInformativeText(msg)
+            dlg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Cancel | QtWidgets.QMessageBox.StandardButton.Ok)
+            dlg.setDefaultButton(QtWidgets.QMessageBox.StandardButton.Ok)
+            resp = dlg.exec()
+            if resp != QtWidgets.QMessageBox.StandardButton.Ok:
+                return
+            # apply staged into persisted mapping and write file
+            try:
+                for k, v in self._staged_names.items():
+                    try:
+                        self._axis_names[k] = v
+                    except Exception:
+                        pass
+                self._save_axis_names()
+            except Exception:
+                pass
+            # update widgets to reflect persisted names and exit configure mode
+            try:
+                for k, w in (self._axis_widgets or {}).items():
+                    try:
+                        name = self._axis_names.get(k, None)
+                        if name is None:
+                            _, _, idx = k
+                            name = f'Axis {idx}'
+                        w.name.blockSignals(True)
+                        w.name.setText(str(name))
+                        w.name.blockSignals(False)
+                        w.name.setReadOnly(True)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # clear staged and reset buttons
+            try:
+                self._staged_names = {}
+                self._configure_mode = False
+                self.btn_configure.setText('Configure')
+                self.btn_save.setEnabled(False)
+            except Exception:
+                pass
         except Exception:
             pass
 
