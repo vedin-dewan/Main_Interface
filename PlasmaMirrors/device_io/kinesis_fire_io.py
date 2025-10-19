@@ -132,7 +132,7 @@ class KinesisFireIO(QtCore.QObject):
             self._set_shutter_off()
             # Seed last trigger value so edge detection works immediately.
             try:
-                val = self._read_trigger_safe()
+                val = self._read_trigger()
                 self._last_trig = val
             except Exception:
                 self._last_trig = None
@@ -231,7 +231,7 @@ class KinesisFireIO(QtCore.QObject):
                 pass
             # initialize last trigger state to the current input so falling-edge detection is consistent
             try:
-                val = self._read_trigger_safe()
+                val = self._read_trigger()
                 self._last_trig = val
             except Exception:
                 self._last_trig = None
@@ -392,25 +392,6 @@ class KinesisFireIO(QtCore.QObject):
             except Exception:
                 self.in_task = None
             return None
-
-    def _read_trigger_safe(self, attempts: int = 3, delay: float = 0.02, default: int = 1) -> int:
-        """Attempt to read the trigger line multiple times and return a stable value.
-
-        Returns an int 0/1. On persistent read failure returns `default` (1) which
-        makes falling-edge detection work when the next real falling edge occurs.
-        """
-        try:
-            for _ in range(max(1, int(attempts))):
-                val = self._read_trigger()
-                if val is not None:
-                    return int(val)
-                try:
-                    time.sleep(float(delay))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        return int(default)
 
     # -------- single-sequence state machine (non-blocking) --------
     def _start_single_sequence(self, n: int):
