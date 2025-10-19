@@ -118,15 +118,77 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         # -- build stages tab layout --
         s_layout = QtWidgets.QHBoxLayout(self.tab_stages)
 
-        # left: list of stages
+        # left column: list of stages plus action buttons
+        left_col = QtWidgets.QWidget()
+        left_col_layout = QtWidgets.QVBoxLayout(left_col)
+        # list of stages
         self.stage_list = QtWidgets.QListWidget()
-        self.stage_list.setFixedWidth(200)
-        s_layout.addWidget(self.stage_list)
+        self.stage_list.setFixedWidth(220)
+        left_col_layout.addWidget(self.stage_list)
+        # small spacer
+        left_col_layout.addSpacing(8)
 
-        # right: detail form
+        # COM port selector combo (for Zaber stages) - placed in left column
+        self.com_combo = QtWidgets.QComboBox()
+        self.com_combo.setEditable(True)
+        # populate with common ports
+        try:
+            self.com_combo.addItems(["COM1","COM2","COM3","COM4","/dev/ttyUSB0","/dev/ttyUSB1","/dev/tty.usbserial-0001"])
+        except Exception:
+            pass
+        row_com = QtWidgets.QHBoxLayout()
+        row_com.addWidget(QtWidgets.QLabel('COM'))
+        row_com.addWidget(self.com_combo)
+        left_col_layout.addLayout(row_com)
+
+        # Baud rate selector - placed in left column
+        self.baud_combo = QtWidgets.QComboBox()
+        self.baud_combo.setEditable(True)
+        try:
+            self.baud_combo.addItems([str(x) for x in (9600, 19200, 38400, 57600, 115200, 230400)])
+        except Exception:
+            pass
+        row_baud = QtWidgets.QHBoxLayout()
+        row_baud.addWidget(QtWidgets.QLabel('Baud'))
+        row_baud.addWidget(self.baud_combo)
+        left_col_layout.addLayout(row_baud)
+
+        # Connect button and stage controls (placed under the list)
+        self.btn_connect = QtWidgets.QPushButton("Connect")
+        # Configure / Save / Add / Remove buttons for stages (configure enables editing)
+        self.btn_stage_configure = QtWidgets.QPushButton('Configure')
+        self.btn_stage_save = QtWidgets.QPushButton('Save')
+        self.btn_stage_save.setEnabled(False)
+        self.btn_stage_add = QtWidgets.QPushButton('Add')
+        self.btn_stage_remove = QtWidgets.QPushButton('Remove')
+        # Ensure Configure and Remove buttons are wide enough to show full labels
+        try:
+            self.btn_stage_configure.setMinimumWidth(90)
+            self.btn_stage_remove.setMinimumWidth(90)
+        except Exception:
+            pass
+
+        # Buttons layout under the stage list
+        btns_top = QtWidgets.QHBoxLayout()
+        btns_top.addWidget(self.btn_connect)
+        btns_top.addStretch()
+        left_col_layout.addLayout(btns_top)
+        left_col_layout.addSpacing(6)
+
+        btns2 = QtWidgets.QHBoxLayout()
+        btns2.addWidget(self.btn_stage_configure)
+        btns2.addWidget(self.btn_stage_save)
+        btns2.addWidget(self.btn_stage_add)
+        btns2.addWidget(self.btn_stage_remove)
+        left_col_layout.addLayout(btns2)
+        left_col_layout.addStretch()
+
+        # right: detail form (keeps COM/Baud fields and other details)
         form = QtWidgets.QFormLayout()
         right = QtWidgets.QWidget()
         right.setLayout(form)
+        # add left and right widgets to the horizontal layout
+        s_layout.addWidget(left_col)
         s_layout.addWidget(right)
 
         # make these editable so user can change parameters
@@ -147,37 +209,7 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         form.addRow("Description", self.desc_edit)
         form.addRow("Limit", self.limit_edit)
 
-        # COM port selector combo (for Zaber stages)
-        self.com_combo = QtWidgets.QComboBox()
-        self.com_combo.setEditable(True)
-        # populate with common ports
-        self.com_combo.addItems(["COM1","COM2","COM3","COM4","/dev/ttyUSB0","/dev/ttyUSB1","/dev/tty.usbserial-0001"])
-        form.addRow("COM", self.com_combo)
-
-        # Baud rate selector
-        self.baud_combo = QtWidgets.QComboBox()
-        self.baud_combo.setEditable(True)
-        self.baud_combo.addItems([str(x) for x in (9600, 19200, 38400, 57600, 115200, 230400)])
-        form.addRow("Baud", self.baud_combo)
-
-        # Connect button to trigger connectRequested
-        self.btn_connect = QtWidgets.QPushButton("Connect")
-        form.addRow("", self.btn_connect)
-
-        # Configure / Save / Add / Remove buttons for stages (configure enables editing)
-        self.btn_stage_configure = QtWidgets.QPushButton('Configure')
-        self.btn_stage_save = QtWidgets.QPushButton('Save')
-        self.btn_stage_save.setEnabled(False)
-        self.btn_stage_add = QtWidgets.QPushButton('Add')
-        self.btn_stage_remove = QtWidgets.QPushButton('Remove')
-        # add to form as a button row
-        btns = QtWidgets.QHBoxLayout()
-        btns.addWidget(self.btn_stage_configure)
-        btns.addWidget(self.btn_stage_save)
-        btns.addStretch()
-        btns.addWidget(self.btn_stage_add)
-        btns.addWidget(self.btn_stage_remove)
-        form.addRow('', btns)
+    # COM/Baud controls moved to the left column near the stage list
 
         # connect selection change
         self.stage_list.currentRowChanged.connect(self._on_stage_selected)
@@ -860,5 +892,136 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                     self.btn_stage_save.setEnabled(True)
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+    def _on_stage_configure_clicked(self):
+        """Toggle configure mode. When entering configure mode create a staged copy.
+        When leaving configure mode (without Save), discard staged changes.
+        """
+        try:
+            # toggle mode
+            cur = bool(getattr(self, '_configure_mode', False))
+            new = not cur
+            self._configure_mode = new
+            if new:
+                # entering configure mode: create staged copy from current persisted stages
+                try:
+                    self._staged_stages = [dict(s) for s in getattr(self, '_stages', [])]
+                except Exception:
+                    self._staged_stages = [dict(s) for s in getattr(self, '_stages', [])]
+                # enable editing controls
+                try:
+                    self.name_edit.setReadOnly(False)
+                    self.model_edit.setReadOnly(False)
+                    self.type_combo.setEnabled(True)
+                    self.num_spin.setEnabled(True)
+                    self.abr_edit.setReadOnly(False)
+                    self.desc_edit.setReadOnly(False)
+                    self.com_combo.setEnabled(True)
+                    self.baud_combo.setEnabled(True)
+                    self.btn_stage_add.setEnabled(True)
+                    self.btn_stage_remove.setEnabled(True)
+                    # keep Save disabled until a change is made
+                    self.btn_stage_save.setEnabled(False)
+                except Exception:
+                    pass
+                # update Configure button appearance
+                try:
+                    self.btn_stage_configure.setText('Cancel')
+                except Exception:
+                    pass
+            else:
+                # leaving configure mode without saving: discard staged changes
+                try:
+                    self._staged_stages = None
+                except Exception:
+                    pass
+                # disable editing controls
+                try:
+                    self.name_edit.setReadOnly(True)
+                    self.model_edit.setReadOnly(True)
+                    self.type_combo.setEnabled(False)
+                    self.num_spin.setEnabled(False)
+                    self.abr_edit.setReadOnly(True)
+                    self.desc_edit.setReadOnly(True)
+                    self.com_combo.setEnabled(False)
+                    self.baud_combo.setEnabled(False)
+                    self.btn_stage_add.setEnabled(False)
+                    self.btn_stage_remove.setEnabled(False)
+                    self.btn_stage_save.setEnabled(False)
+                except Exception:
+                    pass
+                # restore Configure button appearance
+                try:
+                    self.btn_stage_configure.setText('Configure')
+                except Exception:
+                    pass
+                # refresh UI to persisted values
+                try:
+                    self._on_stage_selected(self.stage_list.currentRow())
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _on_stage_add(self):
+        """Add a new blank staged stage when in configure mode."""
+        try:
+            if not getattr(self, '_configure_mode', False):
+                return
+            # ensure staged list exists
+            try:
+                if self._staged_stages is None:
+                    self._staged_stages = [dict(s) for s in getattr(self, '_stages', [])]
+            except Exception:
+                self._staged_stages = [dict(s) for s in getattr(self, '_stages', [])]
+            # create a blank stage with sensible defaults
+            new_stage = {'name': 'New Stage', 'model_number': '', 'type': 'Linear', 'num': 0, 'Abr': '', 'description': '', 'limit': '', 'com': '', 'baud': ''}
+            self._staged_stages.append(new_stage)
+            # update list widget
+            try:
+                self.stage_list.addItem(new_stage.get('name',''))
+                self.stage_list.setCurrentRow(self.stage_list.count()-1)
+            except Exception:
+                pass
+            # mark Save enabled
+            try:
+                self.btn_stage_save.setEnabled(True)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _on_stage_remove(self):
+        """Remove the currently selected staged stage when in configure mode."""
+        try:
+            if not getattr(self, '_configure_mode', False):
+                return
+            idx = self.stage_list.currentRow()
+            if idx < 0:
+                return
+            try:
+                # ensure staged exists
+                if self._staged_stages is None:
+                    self._staged_stages = [dict(s) for s in getattr(self, '_stages', [])]
+            except Exception:
+                self._staged_stages = [dict(s) for s in getattr(self, '_stages', [])]
+            # remove from staged and list widget
+            try:
+                if 0 <= idx < len(self._staged_stages):
+                    del self._staged_stages[idx]
+                self.stage_list.takeItem(idx)
+                # select a sensible nearby index
+                new_idx = min(idx, self.stage_list.count()-1)
+                if new_idx >= 0:
+                    self.stage_list.setCurrentRow(new_idx)
+            except Exception:
+                pass
+            # enable Save since staged changed
+            try:
+                self.btn_stage_save.setEnabled(True)
+            except Exception:
+                pass
         except Exception:
             pass
