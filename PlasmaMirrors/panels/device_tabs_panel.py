@@ -164,20 +164,58 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self.btn_connect = QtWidgets.QPushButton("Connect")
         form.addRow("", self.btn_connect)
 
+        # Configure / Save / Add / Remove buttons for stages (configure enables editing)
+        self.btn_stage_configure = QtWidgets.QPushButton('Configure')
+        self.btn_stage_save = QtWidgets.QPushButton('Save')
+        self.btn_stage_save.setEnabled(False)
+        self.btn_stage_add = QtWidgets.QPushButton('Add')
+        self.btn_stage_remove = QtWidgets.QPushButton('Remove')
+        # add to form as a button row
+        btns = QtWidgets.QHBoxLayout()
+        btns.addWidget(self.btn_stage_configure)
+        btns.addWidget(self.btn_stage_save)
+        btns.addStretch()
+        btns.addWidget(self.btn_stage_add)
+        btns.addWidget(self.btn_stage_remove)
+        form.addRow('', btns)
+
         # connect selection change
         self.stage_list.currentRowChanged.connect(self._on_stage_selected)
+        # initially editing disabled; configure mode enables editing
+        try:
+            self._configure_mode = False
+            self._staged_stages = None
+            # make fields read-only / disabled by default
+            self.name_edit.setReadOnly(True)
+            self.model_edit.setReadOnly(True)
+            self.type_combo.setEnabled(False)
+            self.num_spin.setEnabled(False)
+            self.abr_edit.setReadOnly(True)
+            self.desc_edit.setReadOnly(True)
+            self.com_combo.setEnabled(False)
+            self.baud_combo.setEnabled(False)
+        except Exception:
+            pass
 
-        # connect editing signals to autosave handlers
+        # connect selection change handlers and editing signals (edits are staged when configure_mode)
         self.name_edit.editingFinished.connect(lambda: self._on_field_changed('name'))
         self.model_edit.editingFinished.connect(lambda: self._on_field_changed('model_number'))
         self.type_combo.currentTextChanged.connect(lambda _: self._on_field_changed('type'))
         self.num_spin.valueChanged.connect(lambda _: self._on_field_changed('num'))
         self.abr_edit.editingFinished.connect(lambda: self._on_field_changed('Abr'))
-        # QPlainTextEdit has no editingFinished, use focusOutEvent based commit via textChanged debounce
+        # QPlainTextEdit has no editingFinished, use textChanged
         self.desc_edit.textChanged.connect(lambda: self._on_field_changed('description'))
         self.com_combo.editTextChanged.connect(lambda _: self._on_com_changed())
         self.baud_combo.currentTextChanged.connect(lambda _: self._on_baud_changed())
         self.btn_connect.clicked.connect(self._on_connect_clicked)
+        # configure/save/add/remove handlers
+        self.btn_stage_configure.clicked.connect(self._on_stage_configure_clicked)
+        self.btn_stage_save.clicked.connect(self._on_stage_save_clicked)
+        self.btn_stage_add.clicked.connect(self._on_stage_add)
+        self.btn_stage_remove.clicked.connect(self._on_stage_remove)
+        # add/remove disabled until configure mode
+        self.btn_stage_add.setEnabled(False)
+        self.btn_stage_remove.setEnabled(False)
 
         # (default_port/default_baud are handled in __init__ after _load_stages)
 
@@ -539,131 +577,85 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         return getattr(self, '_stages', [])
 
     def _on_field_changed(self, key: str):
-        """Generic handler when a field is edited for the currently selected stage.
-        Updates the in-memory dict and persists to disk.
-        """
-        idx = self.stage_list.currentRow()
-        if idx < 0 or idx >= len(getattr(self, '_stages', [])):
-            return
-        s = self._stages[idx]
+        """When in configure mode, stage edits are applied to a staged copy and saved on Save.
+        When not in configure mode, ignore edits and revert UI to persisted values."""
         try:
-            # read the new value from the appropriate widget
-            if key == 'name':
-                new_val = self.name_edit.text()
-            elif key == 'model_number':
-                new_val = self.model_edit.text()
-            elif key == 'type':
-                new_val = self.type_combo.currentText()
-            elif key == 'num':
+            if not getattr(self, '_configure_mode', False):
+                # ignore edits when not in configure mode; revert UI to persisted
                 try:
-                    new_val = int(self.num_spin.value())
-                except Exception:
-                    new_val = self.num_spin.value()
-            elif key == 'Abr':
-                new_val = self.abr_edit.text()
-            elif key == 'description':
-                new_val = self.desc_edit.toPlainText()
-            elif key == 'com':
-                new_val = self.com_combo.currentText()
-            elif key == 'baud':
-                new_val = self.baud_combo.currentText()
-            else:
-                # unknown key: no-op
-                return
-
-            old_val = s.get(key, '')
-            # if nothing changed, do nothing
-            if str(new_val) == str(old_val):
-                return
-
-            # Confirmation dialog
-            try:
-                mb = QtWidgets.QMessageBox(self)
-                mb.setIcon(QtWidgets.QMessageBox.Icon.Question)
-                mb.setWindowTitle('Confirm stage edit')
-                mb.setText(f"Change '{key}' for stage '{s.get('name','')}'?")
-                mb.setInformativeText(f"Old: {old_val}\nNew: {new_val}\n\nSave change?")
-                mb.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Cancel | QtWidgets.QMessageBox.StandardButton.Yes)
-                mb.setDefaultButton(QtWidgets.QMessageBox.StandardButton.Yes)
-                resp = mb.exec()
-            except Exception:
-                resp = QtWidgets.QMessageBox.StandardButton.Yes
-
-            if resp == QtWidgets.QMessageBox.StandardButton.Cancel:
-                # revert widget to old value without emitting signals
-                try:
-                    if key == 'name':
-                        self.name_edit.blockSignals(True)
-                        self.name_edit.setText(str(old_val))
-                        self.name_edit.blockSignals(False)
-                        try: self.stage_list.item(idx).setText(str(old_val))
-                        except Exception: pass
-                    elif key == 'model_number':
-                        self.model_edit.blockSignals(True)
-                        self.model_edit.setText(str(old_val))
-                        self.model_edit.blockSignals(False)
-                    elif key == 'type':
-                        self.type_combo.blockSignals(True)
-                        self.type_combo.setCurrentText(str(old_val))
-                        self.type_combo.blockSignals(False)
-                    elif key == 'num':
-                        self.num_spin.blockSignals(True)
-                        try: self.num_spin.setValue(int(old_val))
-                        except Exception: pass
-                        self.num_spin.blockSignals(False)
-                    elif key == 'Abr':
-                        self.abr_edit.blockSignals(True)
-                        self.abr_edit.setText(str(old_val))
-                        self.abr_edit.blockSignals(False)
-                    elif key == 'description':
-                        self.desc_edit.blockSignals(True)
-                        self.desc_edit.setPlainText(str(old_val))
-                        self.desc_edit.blockSignals(False)
-                    elif key == 'com':
-                        self.com_combo.blockSignals(True)
-                        self.com_combo.setCurrentText(str(old_val))
-                        self.com_combo.blockSignals(False)
-                    elif key == 'baud':
-                        self.baud_combo.blockSignals(True)
-                        self.baud_combo.setCurrentText(str(old_val))
-                        self.baud_combo.blockSignals(False)
+                    self._on_stage_selected(self.stage_list.currentRow())
                 except Exception:
                     pass
                 return
+            idx = self.stage_list.currentRow()
+            if idx < 0:
+                return
+            # ensure we have a staged copy
+            try:
+                staged = self._staged_stages
+                if staged is None:
+                    self._staged_stages = [dict(s) for s in getattr(self, '_stages', [])]
+                    staged = self._staged_stages
+            except Exception:
+                staged = [dict(s) for s in getattr(self, '_stages', [])]
+                self._staged_stages = staged
 
-            # commit change
+            s = staged[idx]
+            try:
+                if key == 'name':
+                    new_val = self.name_edit.text()
+                elif key == 'model_number':
+                    new_val = self.model_edit.text()
+                elif key == 'type':
+                    new_val = self.type_combo.currentText()
+                elif key == 'num':
+                    try:
+                        new_val = int(self.num_spin.value())
+                    except Exception:
+                        new_val = self.num_spin.value()
+                elif key == 'Abr':
+                    new_val = self.abr_edit.text()
+                elif key == 'description':
+                    new_val = self.desc_edit.toPlainText()
+                elif key == 'com':
+                    new_val = self.com_combo.currentText()
+                elif key == 'baud':
+                    new_val = self.baud_combo.currentText()
+                else:
+                    return
+            except Exception:
+                return
+
+            old_val = s.get(key, '')
+            if str(new_val) == str(old_val):
+                return
+            # stage the change
             try:
                 s[key] = new_val
             except Exception:
                 pass
-
-            # refresh visible list label if name changed
+            # update list display for name changes
             try:
                 if key == 'name':
-                    try: self.stage_list.item(idx).setText(s.get('name',''))
+                    try: self.stage_list.item(idx).setText(str(new_val))
                     except Exception: pass
             except Exception:
                 pass
-
-            # after edits, make sure stages are kept sorted by num in memory and on-disk
+            # mark Save enabled if any differences between staged and persisted
             try:
-                self._stages = sorted(self._stages, key=lambda x: int(x.get('num', 0)))
+                if self._staged_stages is not None:
+                    changed = False
+                    orig = getattr(self, '_stages', [])
+                    if len(orig) != len(self._staged_stages):
+                        changed = True
+                    else:
+                        for a, b in zip(orig, self._staged_stages):
+                            if a != b:
+                                changed = True
+                                break
+                    self.btn_stage_save.setEnabled(bool(changed))
             except Exception:
-                pass
-
-            # persist: emit only for name/num; otherwise persist silently
-            try:
-                if key in ('name', 'num'):
-                    self._save_stages()
-                else:
-                    try:
-                        self._suppress_emit = True
-                        self._save_stages()
-                    finally:
-                        try: del self._suppress_emit
-                        except Exception: pass
-            except Exception:
-                pass
+                self.btn_stage_save.setEnabled(True)
         except Exception:
             pass
 
@@ -736,5 +728,137 @@ class DeviceTabsPanel(QtWidgets.QWidget):
                         break
                 except Exception:
                     continue
+        except Exception:
+            pass
+
+    def _on_stage_save_clicked(self):
+        """Show a confirmation dialog summarizing staged changes before saving.
+        If the user confirms, commit staged changes to the persisted stages file.
+        """
+        try:
+            # If there is no staged copy, just save and close configure mode
+            if not getattr(self, '_staged_stages', None):
+                try:
+                    self._save_stages()
+                except Exception:
+                    pass
+                # exit configure mode and clear staged state
+                try:
+                    self._staged_stages = None
+                    self._configure_mode = False
+                    # make fields read-only/disabled again
+                    self.name_edit.setReadOnly(True)
+                    self.model_edit.setReadOnly(True)
+                    self.type_combo.setEnabled(False)
+                    self.num_spin.setEnabled(False)
+                    self.abr_edit.setReadOnly(True)
+                    self.desc_edit.setReadOnly(True)
+                    self.com_combo.setEnabled(False)
+                    self.baud_combo.setEnabled(False)
+                    self.btn_stage_add.setEnabled(False)
+                    self.btn_stage_remove.setEnabled(False)
+                    self.btn_stage_save.setEnabled(False)
+                except Exception:
+                    pass
+                return
+
+            orig = getattr(self, '_stages', []) or []
+            staged = self._staged_stages or []
+
+            # Build a human-readable summary of differences
+            lines = []
+            try:
+                if len(orig) != len(staged):
+                    lines.append(f"Original count: {len(orig)}, Staged count: {len(staged)}")
+                # check for per-item differences by index
+                common = min(len(orig), len(staged))
+                for i in range(common):
+                    a = orig[i]
+                    b = staged[i]
+                    diffs = []
+                    # union of keys
+                    for k in sorted(set(list(a.keys()) + list(b.keys()))):
+                        va = a.get(k, '')
+                        vb = b.get(k, '')
+                        if str(va) != str(vb):
+                            diffs.append(f"{k}: '{va}' -> '{vb}'")
+                    if diffs:
+                        lines.append(f"[{i}] {a.get('name','')} changes:")
+                        for d in diffs:
+                            lines.append(f"  - {d}")
+                # added entries
+                if len(staged) > len(orig):
+                    for i in range(len(orig), len(staged)):
+                        lines.append(f"[+] Added [{i}] {staged[i].get('name','(unnamed)')}")
+                # removed entries
+                if len(orig) > len(staged):
+                    for i in range(len(staged), len(orig)):
+                        lines.append(f"[-] Removed [{i}] {orig[i].get('name','(unnamed)')}")
+            except Exception:
+                lines.append("(Could not compute detailed diff)")
+
+            summary = "\n".join(lines) if lines else "No changes detected."
+
+            # Ask the user to confirm; put the detailed diff into the detailed text
+            try:
+                msg = QtWidgets.QMessageBox(self)
+                msg.setIcon(QtWidgets.QMessageBox.Icon.Question)
+                msg.setWindowTitle("Confirm Save")
+                msg.setText("Save staged changes to stages.json?")
+                msg.setInformativeText("Press Yes to write the changes to disk, or Cancel to return to Configure mode.")
+                msg.setDetailedText(summary)
+                msg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.Cancel)
+                res = msg.exec()
+            except Exception:
+                # fallback to a simpler dialog
+                res = QtWidgets.QMessageBox.StandardButton.Yes
+
+            if res == QtWidgets.QMessageBox.StandardButton.Yes:
+                try:
+                    # commit staged copy to the persisted list
+                    self._stages = [dict(s) for s in staged]
+                except Exception:
+                    pass
+                try:
+                    # perform actual write
+                    # suppress extra emit if caller wants it, but default is to emit
+                    if hasattr(self, '_suppress_emit'):
+                        prev = self._suppress_emit
+                    else:
+                        prev = False
+                    try:
+                        self._save_stages()
+                    finally:
+                        # restore flag if present
+                        if hasattr(self, '_suppress_emit'):
+                            self._suppress_emit = prev
+                except Exception:
+                    pass
+
+                # exit configure mode and clear staged state
+                try:
+                    self._staged_stages = None
+                    self._configure_mode = False
+                    # make fields read-only/disabled again
+                    self.name_edit.setReadOnly(True)
+                    self.model_edit.setReadOnly(True)
+                    self.type_combo.setEnabled(False)
+                    self.num_spin.setEnabled(False)
+                    self.abr_edit.setReadOnly(True)
+                    self.desc_edit.setReadOnly(True)
+                    self.com_combo.setEnabled(False)
+                    self.baud_combo.setEnabled(False)
+                    self.btn_stage_add.setEnabled(False)
+                    self.btn_stage_remove.setEnabled(False)
+                    self.btn_stage_save.setEnabled(False)
+                except Exception:
+                    pass
+            else:
+                # user cancelled: keep staged edits and remain in configure mode
+                try:
+                    # ensure Save stays enabled since there are staged changes
+                    self.btn_stage_save.setEnabled(True)
+                except Exception:
+                    pass
         except Exception:
             pass
