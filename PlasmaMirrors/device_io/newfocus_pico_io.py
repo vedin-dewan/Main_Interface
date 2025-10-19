@@ -22,8 +22,9 @@ class NewFocusPicoIO(QtCore.QObject):
     error = QtCore.pyqtSignal(str)
     opened = QtCore.pyqtSignal()
     discovered = QtCore.pyqtSignal(list)  # list of dicts: { 'adapter_key', 'address', 'model_serial' }
-    moved = QtCore.pyqtSignal(str, int, int)  # adapter_key, address, axis
+    # moved provides the new position as float: moved(adapter_key, address, axis, position)
     moving = QtCore.pyqtSignal(str, int, bool)
+    moved = QtCore.pyqtSignal(str, int, int, float)
 
     def __init__(self, dll_dir: str | None = None, usb_pid: int = 0x4000):
         super().__init__()
@@ -32,6 +33,8 @@ class NewFocusPicoIO(QtCore.QObject):
         self.deviceIO = None
         self.cmd = None
         self._open = False
+        # cache last-known positions: (adapter,addr,axis) -> float
+        self._last_pos = {}
 
     @QtCore.pyqtSlot()
     def open(self):
@@ -139,6 +142,59 @@ class NewFocusPicoIO(QtCore.QObject):
             self.opened.emit()
             self.discovered.emit(adapters)
             self.log.emit(f'Picomotor I/O opened; adapters: {len(keys)}')
+            # Read initial positions for each discovered adapter/address and axes 1..4
+            try:
+                for it in adapters:
+                    ak = str(it.get('adapter_key') or '')
+                    addr = int(it.get('address') or 1)
+                    for axis in range(1, 5):
+                        try:
+                            pos = None
+                            ok = False
+                            # Try likely GetPosition overloads; vendor may return (True, pos) or pos
+                            try:
+                                out = self.cmd.GetPosition(ak, int(addr), int(axis))
+                                if isinstance(out, tuple) and len(out) >= 2:
+                                    ok = bool(out[0])
+                                    try:
+                                        pos = float(out[1])
+                                    except Exception:
+                                        pos = None
+                                else:
+                                    ok = True
+                                    try:
+                                        pos = float(out)
+                                    except Exception:
+                                        pos = None
+                            except Exception:
+                                try:
+                                    out = self.cmd.GetPosition(ak, int(axis))
+                                    if isinstance(out, tuple) and len(out) >= 2:
+                                        ok = bool(out[0])
+                                        try:
+                                            pos = float(out[1])
+                                        except Exception:
+                                            pos = None
+                                    else:
+                                        ok = True
+                                        try:
+                                            pos = float(out)
+                                        except Exception:
+                                            pos = None
+                                except Exception:
+                                    ok = False
+                                    pos = None
+                            if ok and pos is not None:
+                                self._last_pos[(ak, int(addr), int(axis))] = float(pos)
+                                # emit moved to populate UI with initial positions
+                                try:
+                                    self.moved.emit(ak, int(addr), int(axis), float(pos))
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+            except Exception:
+                pass
         except Exception as e:
             self.error.emit('Open failed: ' + str(e))
 
@@ -175,41 +231,137 @@ class NewFocusPicoIO(QtCore.QObject):
                         self.moving.emit(adapter_key, int(address), False)
                         return
 
-            # Poll motion done
-            done = False
-            for _ in range(200):
+            # Read old position if available
+            oldpos = None
+            try:
+                out = None
                 try:
-                    b = False
+                    out = self.cmd.GetPosition(adapter_key, int(address), int(axis))
+                except Exception:
                     try:
-                        # two-arg overloads may expect (key, axis, addr, outBool)
-                        out = self.cmd.GetMotionDone(adapter_key, int(axis), int(address))
-                        # If GetMotionDone returns a tuple-like, coerce
-                        if isinstance(out, tuple) and len(out) >= 1:
-                            b = bool(out[0])
-                        else:
-                            b = bool(out)
+                        out = self.cmd.GetPosition(adapter_key, int(axis))
+                    except Exception:
+                        out = None
+                if isinstance(out, tuple) and len(out) >= 2:
+                    if bool(out[0]):
+                        try:
+                            oldpos = float(out[1])
+                        except Exception:
+                            oldpos = None
+                else:
+                    try:
+                        oldpos = float(out)
+                    except Exception:
+                        oldpos = None
+            except Exception:
+                oldpos = None
+
+            # Poll motion done using vendor signature that returns (True, done)
+            done = False
+            for _ in range(500):
+                try:
+                    out = None
+                    try:
+                        out = self.cmd.GetMotionDone(adapter_key, int(address), int(axis), True)
                     except Exception:
                         try:
-                            out = self.cmd.GetMotionDone(adapter_key, int(axis))
-                            if isinstance(out, tuple) and len(out) >= 1:
-                                b = bool(out[0])
-                            else:
-                                b = bool(out)
+                            out = self.cmd.GetMotionDone(adapter_key, int(axis), int(address), True)
                         except Exception:
-                            b = True
-                    if b:
-                        done = True
-                        break
+                            try:
+                                out = self.cmd.GetMotionDone(adapter_key, int(axis))
+                            except Exception:
+                                out = None
+                    # Interpret out: may be tuple (ok, done) or single bool
+                    if isinstance(out, tuple) and len(out) >= 2:
+                        # some vendors return (True, True/False)
+                        try:
+                            ok = bool(out[0])
+                        except Exception:
+                            ok = True
+                        try:
+                            done_flag = bool(out[1])
+                        except Exception:
+                            done_flag = False
+                        if ok and done_flag:
+                            done = True
+                            break
+                    else:
+                        try:
+                            if bool(out):
+                                done = True
+                                break
+                        except Exception:
+                            pass
                 except Exception:
                     pass
                 QtCore.QThread.msleep(20)
 
-            self.moved.emit(adapter_key, int(address), int(axis))
-            self.moving.emit(adapter_key, int(address), False)
-            if not done:
-                self.log.emit('RelativeMove: move issued (motion-done poll timed out)')
-            else:
+            # After motion done (or timeout) read position from device
+            pos = None
+            pos_ok = False
+            try:
+                outp = None
+                try:
+                    outp = self.cmd.GetPosition(adapter_key, int(address), int(axis))
+                except Exception:
+                    try:
+                        outp = self.cmd.GetPosition(adapter_key, int(axis))
+                    except Exception:
+                        outp = None
+                if isinstance(outp, tuple) and len(outp) >= 2:
+                    pos_ok = bool(outp[0])
+                    try:
+                        pos = float(outp[1])
+                    except Exception:
+                        pos = None
+                else:
+                    try:
+                        pos = float(outp)
+                        pos_ok = True
+                    except Exception:
+                        pos = None
+                        pos_ok = False
+            except Exception:
+                pos = None
+                pos_ok = False
+
+            # If motion reported done but position didn't change -> error
+            if done and pos_ok:
+                prev = self._last_pos.get((str(adapter_key), int(address), int(axis)))
+                try:
+                    self._last_pos[(str(adapter_key), int(address), int(axis))] = float(pos)
+                except Exception:
+                    pass
+                if prev is not None:
+                    try:
+                        if float(pos) == float(prev):
+                            # nothing moved — report error
+                            self.error.emit(f"Address {int(address)} axis {int(axis)} error, nothing attached")
+                            self.moving.emit(adapter_key, int(address), False)
+                            return
+                    except Exception:
+                        pass
+                # emit moved with position so UI can update from hardware
+                try:
+                    self.moved.emit(adapter_key, int(address), int(axis), float(pos))
+                except Exception:
+                    pass
+                self.moving.emit(adapter_key, int(address), False)
                 self.log.emit('RelativeMove: complete')
+            else:
+                # timed out or pos read failed
+                if pos_ok and pos is not None:
+                    try:
+                        self._last_pos[(str(adapter_key), int(address), int(axis))] = float(pos)
+                        self.moved.emit(adapter_key, int(address), int(axis), float(pos))
+                    except Exception:
+                        pass
+                else:
+                    self.log.emit('RelativeMove: move issued (motion-done poll timed out or position read failed)')
+                try:
+                    self.moving.emit(adapter_key, int(address), False)
+                except Exception:
+                    pass
         except Exception as e:
             self.error.emit('RelativeMove failed: ' + str(e))
             try:

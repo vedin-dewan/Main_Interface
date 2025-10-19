@@ -302,6 +302,13 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 self.pico_io.log.connect(self.status_panel.append_line)
                 self.pico_io.error.connect(self.status_panel.append_line)
+                # also route pico-specific logs into the Picomotors panel status area when available
+                try:
+                    if getattr(self, 'pico_panel', None) is not None:
+                        self.pico_io.log.connect(self.pico_panel.append_line)
+                        self.pico_io.error.connect(self.pico_panel.append_line)
+                except Exception:
+                    pass
                 # when discovered, populate UI lists
                 def _on_pico_discovered(items: list):
                     try:

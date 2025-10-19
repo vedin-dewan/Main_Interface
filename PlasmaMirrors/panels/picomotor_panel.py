@@ -367,49 +367,69 @@ class PicoPanel(QtWidgets.QWidget):
         except Exception:
             pass
 
-    @QtCore.pyqtSlot(str, int, int)
-    def _on_io_moved(self, adapter_key: str, address: int, axis: int):
-        """Handle moved signal from IO: apply pending delta to cached position and update display."""
+    @QtCore.pyqtSlot(str, int, int, float)
+    def _on_io_moved(self, adapter_key: str, address: int, axis: int, position: float):
+        """Handle moved signal from IO: update display with the hardware-reported position.
+
+        Only append a move-complete message if we had a pending requested move for this key.
+        Otherwise this is treated as an initial read/unsolicited update.
+        """
         try:
             key = (str(adapter_key), int(address), int(axis))
-            delta = 0
+            # cancel and remove any pending timer for this move
             try:
-                delta = int(self._pending_moves.pop(key, 0))
+                t = self._move_timers.pop(key, None)
+                if t is not None:
+                    try:
+                        t.stop()
+                        t.deleteLater()
+                    except Exception:
+                        pass
             except Exception:
-                delta = 0
+                pass
+
+            # update cache and widget with hardware position
             try:
-                cur = float(self._pos_cache.get(key, 0.0) or 0.0)
+                pos_val = float(position)
             except Exception:
-                cur = 0.0
+                try:
+                    pos_val = float(self._pos_cache.get(key, 0.0) or 0.0)
+                except Exception:
+                    pos_val = 0.0
             try:
-                new = float(cur + float(delta))
-            except Exception:
-                new = cur
-            # update cache and widget
-            try:
-                self._pos_cache[key] = float(new)
+                self._pos_cache[key] = float(pos_val)
                 pr = self._axis_widgets.get(key)
                 if pr is not None:
-                    pr.pos.setText(f"{float(new):.6f}")
-                # append an explicit move-complete message to the picomotors status area
-                try:
-                    # format delta with sign
+                    pr.pos.setText(f"{float(pos_val):.6f}")
+            except Exception:
+                pass
+
+            # If there was a pending move for this key, pop it and log completion; otherwise treat as initial update
+            try:
+                if key in self._pending_moves:
+                    delta = int(self._pending_moves.pop(key, 0))
                     try:
-                        delta_int = int(delta)
+                        delta_str = f"{int(delta):+d}"
                     except Exception:
-                        delta_int = 0
-                    delta_str = f"{delta_int:+d}"
-                    # format new position: prefer integer if whole, otherwise 6-decimal float
+                        delta_str = str(delta)
                     try:
-                        if float(new).is_integer():
-                            new_str = str(int(float(new)))
+                        # format new position: integer if whole, else 6-decimal
+                        if float(pos_val).is_integer():
+                            new_str = str(int(float(pos_val)))
                         else:
-                            new_str = f"{float(new):.6f}"
+                            new_str = f"{float(pos_val):.6f}"
                     except Exception:
-                        new_str = f"{float(new):.6f}"
-                    self.append_line(f"Move complete: Address {int(address)} Axis {int(axis)} \u2206={delta_str} steps — new pos {new_str}")
-                except Exception:
-                    pass
+                        new_str = f"{float(pos_val):.6f}"
+                    try:
+                        self.append_line(f"Move complete: Address {int(address)} Axis {int(axis)} \u2206={delta_str} steps — new pos {new_str}")
+                    except Exception:
+                        pass
+                else:
+                    # unsolicited or initial read — show a brief status line for initial population
+                    try:
+                        self.append_line(f"Address {int(address)} Axis {int(axis)} position: {float(pos_val):.6f}")
+                    except Exception:
+                        pass
             except Exception:
                 pass
         except Exception:
