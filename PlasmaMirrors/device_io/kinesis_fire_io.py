@@ -130,6 +130,12 @@ class KinesisFireIO(QtCore.QObject):
             # energized or in single-shot mode on application start.
             self._set_mode_internal("manual")
             self._set_shutter_off()
+            # Seed last trigger value so edge detection works immediately.
+            try:
+                val = self._read_trigger()
+                self._last_trig = val
+            except Exception:
+                self._last_trig = None
             self.connected.emit(self.serial)
             self.log.emit(f"KSC101 connected (serial {self.serial}).")
         except Exception as e:
@@ -265,8 +271,22 @@ class KinesisFireIO(QtCore.QObject):
         self._fire_requested = True
         self._burst_count = 0
         self.shots_progress.emit(0, self._num_shots)
-        # Arm state: ensure outputs reflect the armed condition immediately so the shutter
-        # is enabled without waiting for the next poll tick (avoids missed audible click).
+        # Arm state: ensure the Kinesis device is in triggered mode and the
+        # shutter is enabled immediately so the first shot or burst isn't missed
+        # while waiting for the periodic poll.
+        try:
+            # put device into triggered mode and enable shutter
+            try:
+                self._set_mode_internal("triggered")
+            except Exception:
+                pass
+            try:
+                self._set_shutter_on()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # Ensure DAQ outputs reflect the armed condition immediately as well.
         try:
             val = self._read_trigger()
             if val is None:
@@ -308,6 +328,11 @@ class KinesisFireIO(QtCore.QObject):
                 self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Manual)
             else:
                 self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Triggered)
+            # Let the device apply its operating mode before changing state.
+            try:
+                time.sleep(0.02)
+            except Exception:
+                pass
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingMode failed: {e}")
 
@@ -316,6 +341,11 @@ class KinesisFireIO(QtCore.QObject):
             return
         try:
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
+            # Small pause to ensure the hardware reflects the new state
+            try:
+                time.sleep(0.02)
+            except Exception:
+                pass
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Active) failed: {e}")
 
@@ -324,6 +354,11 @@ class KinesisFireIO(QtCore.QObject):
             return
         try:
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
+            # Small pause to ensure the hardware reflects the new state
+            try:
+                time.sleep(0.02)
+            except Exception:
+                pass
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
