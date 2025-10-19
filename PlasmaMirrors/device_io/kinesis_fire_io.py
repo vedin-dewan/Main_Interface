@@ -84,9 +84,9 @@ class KinesisFireIO(QtCore.QObject):
         # runtime state
         # Start in a safe manual state (manual operating mode, shutter off)
         # instead of auto-starting in single-shot mode with shutter open.
-        # Expose 'continuous' as the public mode name to indicate manual/continuous
-        # operating mode to UIs.
-        self._mode: str = "continuous"         # "continuous" | "single" | "burst"
+        # Use internal mode 'manual' so the poll loop will keep the device
+        # in manual/off state until an explicit set_mode() is called.
+        self._mode: str = "manual"         # internal: 'manual' | public: 'continuous' | 'single' | 'burst'
         self._num_shots: int = 1
         self._fire_requested: bool = False
         self._burst_count: int = 0
