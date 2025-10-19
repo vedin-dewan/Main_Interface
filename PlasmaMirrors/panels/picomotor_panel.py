@@ -65,6 +65,14 @@ class PicoPanel(QtWidgets.QWidget):
         self.motor_selector = QtWidgets.QComboBox()
         self.motor_selector.setFixedWidth(80)
         mid.addWidget(self.motor_selector)
+        # populate motor selector with 1..4 by default
+        try:
+            self.motor_selector.clear()
+            for _i in range(1, 5):
+                self.motor_selector.addItem(str(_i), _i)
+            self.motor_selector.setCurrentIndex(0)
+        except Exception:
+            pass
         self.light = RoundLight(14, '#22cc66', '#2b2b2b')
         mid.addWidget(self.light)
         self.btn_stop = QtWidgets.QPushButton('Stop')
@@ -291,7 +299,8 @@ class PicoPanel(QtWidgets.QWidget):
         for r in rows:
             pr = PicoMotorRow(r.get('address', 0))
             pr.name.setText(str(r.get('model_serial','')))
-            self.inner_layout.insertWidget(self.inner_layout.count()-1, pr)
+            # add in order
+            self.inner_layout.addWidget(pr)
         self.inner_layout.addStretch()
 
     def _populate_axis_rows(self, adapter_key: str, address: int, axis_count: int = 4):
@@ -337,8 +346,19 @@ class PicoPanel(QtWidgets.QWidget):
                 self._axis_widgets[(str(adapter_key), int(address), int(axis))] = pr
             except Exception:
                 pass
-            self.inner_layout.insertWidget(self.inner_layout.count()-1, pr)
+            # add widgets in order so UI shows 1..4 top-to-bottom
+            self.inner_layout.addWidget(pr)
         self.inner_layout.addStretch()
+        # populate the motor selector for this controller (1..axis_count)
+        try:
+            self.motor_selector.blockSignals(True)
+            self.motor_selector.clear()
+            for i in range(1, int(axis_count) + 1):
+                self.motor_selector.addItem(str(i), i)
+            self.motor_selector.setCurrentIndex(0)
+            self.motor_selector.blockSignals(False)
+        except Exception:
+            pass
         # save names file after populating
         try:
             self._save_axis_names()
