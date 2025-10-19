@@ -340,7 +340,7 @@ class PicoPanel(QtWidgets.QWidget):
             # initialize position to zero in cache and widget
             try:
                 self._pos_cache[(str(adapter_key), int(address), int(axis))] = 0.0
-                pr.pos.setText(f"{0.0:.6f}")
+                pr.pos.setText(str(0))
             except Exception:
                 pass
             # store widget mapping for updates
@@ -400,7 +400,13 @@ class PicoPanel(QtWidgets.QWidget):
                 self._pos_cache[key] = float(pos_val)
                 pr = self._axis_widgets.get(key)
                 if pr is not None:
-                    pr.pos.setText(f"{float(pos_val):.6f}")
+                    try:
+                        pr.pos.setText(str(int(round(float(pos_val)))))
+                    except Exception:
+                        try:
+                            pr.pos.setText(str(int(float(pos_val))))
+                        except Exception:
+                            pr.pos.setText(str(pos_val))
             except Exception:
                 pass
 
@@ -413,13 +419,12 @@ class PicoPanel(QtWidgets.QWidget):
                     except Exception:
                         delta_str = str(delta)
                     try:
-                        # format new position: integer if whole, else 6-decimal
-                        if float(pos_val).is_integer():
-                            new_str = str(int(float(pos_val)))
-                        else:
-                            new_str = f"{float(pos_val):.6f}"
+                        new_str = str(int(round(float(pos_val))))
                     except Exception:
-                        new_str = f"{float(pos_val):.6f}"
+                        try:
+                            new_str = str(int(float(pos_val)))
+                        except Exception:
+                            new_str = str(pos_val)
                     try:
                         self.append_line(f"Move complete: Address {int(address)} Axis {int(axis)} \u2206={delta_str} steps — new pos {new_str}")
                     except Exception:
@@ -427,7 +432,10 @@ class PicoPanel(QtWidgets.QWidget):
                 else:
                     # unsolicited or initial read — show a brief status line for initial population
                     try:
-                        self.append_line(f"Address {int(address)} Axis {int(axis)} position: {float(pos_val):.6f}")
+                        try:
+                            self.append_line(f"Address {int(address)} Axis {int(axis)} position: {int(round(float(pos_val)))}")
+                        except Exception:
+                            self.append_line(f"Address {int(address)} Axis {int(axis)} position: {int(float(pos_val))}")
                     except Exception:
                         pass
             except Exception:
