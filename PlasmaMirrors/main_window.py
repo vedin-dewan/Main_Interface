@@ -901,7 +901,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             if not isinstance(data, dict):
                 return
-            val = data.get('shot_counter')
+            val = data.get('shot_counter') + 1
             if val is None:
                 return
             try:
