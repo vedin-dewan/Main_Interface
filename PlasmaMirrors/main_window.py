@@ -754,8 +754,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         try:
                             if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
                                 newval = int(self.fire_panel.disp_counter.value()) + 1
-                                self.fire_panel.disp_counter.setValue(newval)
-                                self.status_panel.append_line(f'Burst complete: shot counter incremented to {newval}')
+                                # Use centralized setter so the new value is persisted to disk
+                                try:
+                                    self._set_shot_counter(newval)
+                                except Exception:
+                                    try: self.fire_panel.disp_counter.setValue(newval)
+                                    except Exception: pass
+                                try:
+                                    self.status_panel.append_line(f'Burst complete: shot counter incremented to {newval}')
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
                     except Exception as e:
@@ -901,7 +909,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             if not isinstance(data, dict):
                 return
-            val = data.get('shot_counter') + 1
+            val = data.get('shot_counter')
             if val is None:
                 return
             try:
