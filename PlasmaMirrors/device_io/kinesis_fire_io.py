@@ -46,7 +46,6 @@ class FireConfig:
     pulse_ms: int = 200                           # high time per shot
     gap_ms: int = 200                             # low time between shots
     single_waits_for_edge: bool = True            # if True: start train at next falling edge
-    debug: bool = True                            # enable verbose debug logging
 
 
 class KinesisFireIO(QtCore.QObject):
@@ -135,8 +134,6 @@ class KinesisFireIO(QtCore.QObject):
             try:
                 val = self._read_trigger()
                 self._last_trig = val
-                if self.cfg.debug:
-                    self.log.emit(f"[DEBUG] initial trigger seed = {val}")
             except Exception:
                 self._last_trig = None
             self.connected.emit(self.serial)
@@ -217,23 +214,12 @@ class KinesisFireIO(QtCore.QObject):
             self._abort_single_sequence()
         self._mode = mode
         # pre-configure device state; tick does the rest
-        # Add a small settle after changing the operating mode to avoid races
         if mode == "continuous":
             self._set_mode_internal("manual")
-            try:
-                time.sleep(0.03)
-            except Exception:
-                pass
             self._set_shutter_on()
         else:
             self._set_mode_internal("triggered")
-            try:
-                time.sleep(0.03)
-            except Exception:
-                pass
             self._set_shutter_on()
-        if self.cfg.debug:
-            self.log.emit(f"[DEBUG] set_mode pre-configured device to {mode}")
         # Reset transient arm state so toggling modes doesn't inherit stale requests
         try:
             self._fire_requested = False
@@ -247,8 +233,6 @@ class KinesisFireIO(QtCore.QObject):
             try:
                 val = self._read_trigger()
                 self._last_trig = val
-                if self.cfg.debug:
-                    self.log.emit(f"[DEBUG] set_mode seeded last_trig = {val}")
             except Exception:
                 self._last_trig = None
             # ensure outputs are in known state (no accidental arming)
@@ -314,11 +298,6 @@ class KinesisFireIO(QtCore.QObject):
                 except Exception: pass
         except Exception:
             pass
-        if self.cfg.debug:
-            try:
-                self.log.emit(f"[DEBUG] fire() read_trigger={val}")
-            except Exception:
-                pass
         self.status.emit(f"Armed ({self._mode})")
 
     # ---------- internals ----------
@@ -351,11 +330,9 @@ class KinesisFireIO(QtCore.QObject):
                 self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Triggered)
             # Let the device apply its operating mode before changing state.
             try:
-                time.sleep(0.03)
+                time.sleep(0.02)
             except Exception:
                 pass
-            if self.cfg.debug:
-                self.log.emit(f"[DEBUG] _set_mode_internal applied mode={mode_key}")
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingMode failed: {e}")
 
@@ -366,11 +343,9 @@ class KinesisFireIO(QtCore.QObject):
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
             # Small pause to ensure the hardware reflects the new state
             try:
-                time.sleep(0.03)
+                time.sleep(0.02)
             except Exception:
                 pass
-            if self.cfg.debug:
-                self.log.emit("[DEBUG] _set_shutter_on called")
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Active) failed: {e}")
 
@@ -381,11 +356,9 @@ class KinesisFireIO(QtCore.QObject):
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
             # Small pause to ensure the hardware reflects the new state
             try:
-                time.sleep(0.03)
+                time.sleep(0.02)
             except Exception:
                 pass
-            if self.cfg.debug:
-                self.log.emit("[DEBUG] _set_shutter_off called")
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
@@ -403,22 +376,21 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"NI-DAQ write failed: {e}")
 
     def _read_trigger(self) -> Optional[int]:
-        # Use an ephemeral NI-DAQ task for each read to avoid persistent-task
-        # state corruption. If nidaq is unavailable, return None.
-        if not _HAVE_DAQ:
+        if self.in_task is None:
             return None
         try:
-            with nidaqmx.Task() as t:
-                t.di_channels.add_di_chan(self.cfg.input_trigger)
-                val = int(bool(t.read()))
-                if self.cfg.debug:
-                    self.log.emit(f"[DEBUG] _read_trigger -> {val}")
-                return val
+            return int(bool(self.in_task.read()))
         except Exception as e:
-            if self.cfg.debug:
-                self.error.emit(f"[DEBUG] NI-DAQ ephemeral read failed: {e}")
-            else:
-                self.error.emit(f"NI-DAQ read failed (will retry): {e}")
+            self.error.emit(f"NI-DAQ read failed (will retry): {e}")
+            try:
+                self.in_task.close()
+            except Exception:
+                pass
+            try:
+                self.in_task = nidaqmx.Task()
+                self.in_task.di_channels.add_di_chan(self.cfg.input_trigger)
+            except Exception:
+                self.in_task = None
             return None
 
     # -------- single-sequence state machine (non-blocking) --------
