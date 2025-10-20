@@ -377,6 +377,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # OPTIONAL: if the thread ever stops, ensure close got called
         self.fire_thread.finished.connect(self.fire_io.close)
         self.fire_thread.start()
+        # --- Temporary: enable diagnostics in the fire IO worker so users can collect traces ---
+        try:
+            QtCore.QMetaObject.invokeMethod(self.fire_io, 'enable_diagnostics', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(bool, True))
+            try:
+                self.status_panel.append_line('Fire I/O diagnostics enabled')
+            except Exception:
+                pass
+        except Exception:
+            pass
         # Panel → IO
         self.fire_panel.request_mode.connect(self.fire_io.set_mode)
         self.fire_panel.request_shots.connect(self.fire_io.set_num_shots)
