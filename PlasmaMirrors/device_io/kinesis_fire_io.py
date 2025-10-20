@@ -158,7 +158,7 @@ class KinesisFireIO(QtCore.QObject):
 
         # Poll timer (runs in this worker thread)
         self.timer = QtCore.QTimer(self)
-        self.timer.setInterval(int(self.cfg.poll_period_s * 1000))
+        self.timer.setInterval(int(self.cfg.poll_period_s * 1000/2))
         self.timer.timeout.connect(self._tick)
         self.timer.start()
         self.status.emit(f"Ready (mode: {self._mode}, serial: {self.serial or 'n/a'})")
@@ -200,18 +200,10 @@ class KinesisFireIO(QtCore.QObject):
         if mode not in ("continuous", "single", "burst"):
             self.error.emit(f"Unknown mode: {mode}")
             return
-        # (debug logging removed)
         # leaving a single sequence mid-stream? abort it safely
         if self._in_single_sequence and mode != "single":
             self._abort_single_sequence()
         self._mode = mode
-        # # pre-configure device state; tick does the rest
-        # if mode == "continuous":
-        #     self._set_mode_internal("manual")
-        #     self._set_shutter_on()
-        # else:
-        #     self._set_mode_internal("triggered")
-        #     self._set_shutter_on()
         
         self.status.emit(f"Mode set to {mode}")
 
