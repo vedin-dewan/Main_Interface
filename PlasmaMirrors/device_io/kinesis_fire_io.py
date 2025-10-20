@@ -46,6 +46,7 @@ class FireConfig:
     pulse_ms: int = 200                           # high time per shot
     gap_ms: int = 200                             # low time between shots
     single_waits_for_edge: bool = True            # if True: start train at next falling edge
+    debug_trig: bool = True                      # enable trigger debug logging
 
 
 class KinesisFireIO(QtCore.QObject):
@@ -231,8 +232,15 @@ class KinesisFireIO(QtCore.QObject):
                 pass
             # initialize last trigger state to the current input so falling-edge detection is consistent
             try:
-                val = self._read_trigger()
+                # seed last trigger using a stable read
+                try:
+                    val = self._read_trigger_stable()
+                except Exception:
+                    val = self._read_trigger()
                 self._last_trig = val
+                if getattr(self.cfg, 'debug_trig', False):
+                    try: self.log.emit(f"Mode set: seeded last_trig={self._last_trig}")
+                    except Exception: pass
             except Exception:
                 self._last_trig = None
             # ensure outputs are in known state (no accidental arming)
@@ -288,13 +296,24 @@ class KinesisFireIO(QtCore.QObject):
             pass
         # Ensure DAQ outputs reflect the armed condition immediately as well.
         try:
-            val = self._read_trigger()
+            # read a stable trigger value and seed last_trig so edge detection is ready
+            try:
+                val = self._read_trigger_stable()
+            except Exception:
+                val = self._read_trigger()
             if val is None:
-                # safe default: enable shutter, leave cameras/spec lines low
                 try: self._write_outputs(1, 0, 0)
                 except Exception: pass
             else:
                 try: self._write_outputs(1, 1 - val, 1 - val)
+                except Exception: pass
+            # store seeded value for the poll loop
+            try:
+                self._last_trig = int(val) if val is not None else self._last_trig
+            except Exception:
+                pass
+            if getattr(self.cfg, 'debug_trig', False):
+                try: self.log.emit(f"Armed: val={val}, seeded last_trig={self._last_trig}")
                 except Exception: pass
         except Exception:
             pass
@@ -400,6 +419,39 @@ class KinesisFireIO(QtCore.QObject):
                 pass
             # Fallback safe default: 1 (so a subsequent falling edge will be detected)
             return 1
+
+    def _read_trigger_stable(self, attempts: int = 3, delay_s: float = 0.01) -> Optional[int]:
+        """Attempt multiple ephemeral reads and return a stable 0/1 value.
+
+        Tries `attempts` times; if multiple consistent reads are observed returns that value.
+        Otherwise returns the last successful read or None if all attempts failed.
+        """
+        last = None
+        consistent = None
+        for i in range(max(1, int(attempts))):
+            try:
+                with nidaqmx.Task() as t:
+                    t.di_channels.add_di_chan(self.cfg.input_trigger)
+                    v = int(bool(t.read()))
+            except Exception as e:
+                try:
+                    if getattr(self.cfg, 'debug_trig', False):
+                        self.error.emit(f"Trigger stable read attempt {i} failed: {e}")
+                except Exception:
+                    pass
+                v = None
+            if v is not None:
+                if last is None:
+                    last = v
+                elif last == v:
+                    consistent = v
+                    break
+            try:
+                time.sleep(float(delay_s))
+            except Exception:
+                pass
+        # prefer consistent if found, else return last read or None
+        return consistent if consistent is not None else last
 
     # -------- single-sequence state machine (non-blocking) --------
     def _start_single_sequence(self, n: int):
