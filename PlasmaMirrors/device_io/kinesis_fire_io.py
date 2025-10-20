@@ -387,22 +387,19 @@ class KinesisFireIO(QtCore.QObject):
             self._one_shot_active = True
             # set outputs high for a pulse, then low and signal completion
             try:
-                # Also toggle the Kinesis shutter device to reproduce the audible click
-                try:
-                    self._set_shutter_on()
-                except Exception:
-                    pass
+                # Pulse DAQ outputs only. We intentionally avoid toggling the Kinesis
+                # shutter here because the audible click and SetOperatingState calls
+                # were observed to race with DAQ timing on some setups and could
+                # cause missed or alternating shots. The Kinesis device's mode/state
+                # should be managed elsewhere (set_mode/fire) using the idempotent
+                # setters; here we rely solely on DAQ outputs for timing-critical pulses.
                 self._write_outputs(1, 1, 1)
             except Exception:
                 pass
             # schedule turning outputs low and emitting done
             def _finish():
                 try:
-                    # Turn Kinesis shutter off to close solenoid
-                    try:
-                        self._set_shutter_off()
-                    except Exception:
-                        pass
+                    # Turn DAQ outputs low. Do not toggle the Kinesis shutter here.
                     self._write_outputs(0, 0, 0)
                 except Exception:
                     pass
