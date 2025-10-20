@@ -220,7 +220,28 @@ class KinesisFireIO(QtCore.QObject):
         else:
             self._set_mode_internal("triggered")
             self._set_shutter_on()
-        
+        # # Reset transient arm state so toggling modes doesn't inherit stale requests
+        # try:
+        #     self._fire_requested = False
+        #     self._burst_count = 0
+        #     # clear any lingering one-shot active flag so tick isn't blocked when switching modes
+        #     try:
+        #         self._one_shot_active = False
+        #     except Exception:
+        #         pass
+        #     # initialize last trigger state to the current input so falling-edge detection is consistent
+        #     try:
+        #         val = self._read_trigger()
+        #         self._last_trig = val
+        #     except Exception:
+        #         self._last_trig = None
+        #     # ensure outputs are in known state (no accidental arming)
+        #     try:
+        #         self._write_outputs(0, 0, 0)
+        #     except Exception:
+        #         pass
+        # except Exception:
+        #     pass
         self.status.emit(f"Mode set to {mode}")
 
     @QtCore.pyqtSlot(int)
@@ -250,6 +271,33 @@ class KinesisFireIO(QtCore.QObject):
         self._fire_requested = True
         self._burst_count = 0
         self.shots_progress.emit(0, self._num_shots)
+        # Arm state: ensure the Kinesis device is in triggered mode and the
+        # shutter is enabled immediately so the first shot or burst isn't missed
+        # while waiting for the periodic poll.
+        try:
+            # put device into triggered mode and enable shutter
+            try:
+                self._set_mode_internal("triggered")
+            except Exception:
+                pass
+            try:
+                self._set_shutter_on()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # Ensure DAQ outputs reflect the armed condition immediately as well.
+        try:
+            val = self._read_trigger()
+            if val is None:
+                # safe default: enable shutter, leave cameras/spec lines low
+                try: self._write_outputs(1, 0, 0)
+                except Exception: pass
+            else:
+                try: self._write_outputs(1, 1 - val, 1 - val)
+                except Exception: pass
+        except Exception:
+            pass
         self.status.emit(f"Armed ({self._mode})")
 
     # ---------- internals ----------
@@ -315,18 +363,17 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
     def _write_outputs(self, shutter: int, cam: int, spec: int):
-        vals = [bool(shutter), bool(cam), bool(spec)]
-        # try:
-        #     vals = [bool(shutter), bool(cam), bool(spec)]
-        # except Exception:
-        #     vals = [False, False, False]
+        try:
+            vals = [bool(shutter), bool(cam), bool(spec)]
+        except Exception:
+            vals = [False, False, False]
 
-        # if self.out_task is None:
-        #     return
-        # try:
-        #     self.out_task.write(vals)
-        # except Exception as e:
-        #     self.error.emit(f"NI-DAQ write failed: {e}")
+        if self.out_task is None:
+            return
+        try:
+            self.out_task.write(vals)
+        except Exception as e:
+            self.error.emit(f"NI-DAQ write failed: {e}")
 
     def _read_trigger(self) -> Optional[int]:
         if self.in_task is None:
