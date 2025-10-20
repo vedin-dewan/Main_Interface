@@ -387,12 +387,7 @@ class KinesisFireIO(QtCore.QObject):
             self._one_shot_active = True
             # set outputs high for a pulse, then low and signal completion
             try:
-                # Pulse DAQ outputs only. We intentionally avoid toggling the Kinesis
-                # shutter here because the audible click and SetOperatingState calls
-                # were observed to race with DAQ timing on some setups and could
-                # cause missed or alternating shots. The Kinesis device's mode/state
-                # should be managed elsewhere (set_mode/fire) using the idempotent
-                # setters; here we rely solely on DAQ outputs for timing-critical pulses.
+                # Pulse DAQ outputs only. 
                 self._write_outputs(1, 1, 1)
             except Exception:
                 pass
@@ -431,7 +426,6 @@ class KinesisFireIO(QtCore.QObject):
         # If a single sequence or a one-shot is running, let that owner own the outputs.
         # This prevents the periodic poll from immediately clearing outputs set by a
         # one-shot pulse.
-        # (diagnostic logging removed)
         if self._in_single_sequence or getattr(self, '_one_shot_active', False):
             return
 
