@@ -212,28 +212,28 @@ class KinesisFireIO(QtCore.QObject):
         else:
             self._set_mode_internal("triggered")
             self._set_shutter_on()
-        # Reset transient arm state so toggling modes doesn't inherit stale requests
-        try:
-            self._fire_requested = False
-            self._burst_count = 0
-            # clear any lingering one-shot active flag so tick isn't blocked when switching modes
-            try:
-                self._one_shot_active = False
-            except Exception:
-                pass
-            # initialize last trigger state to the current input so falling-edge detection is consistent
-            try:
-                val = self._read_trigger()
-                self._last_trig = val
-            except Exception:
-                self._last_trig = None
-            # ensure outputs are in known state (no accidental arming)
-            try:
-                self._write_outputs(0, 0, 0)
-            except Exception:
-                pass
-        except Exception:
-            pass
+        # # Reset transient arm state so toggling modes doesn't inherit stale requests
+        # try:
+        #     self._fire_requested = False
+        #     self._burst_count = 0
+        #     # clear any lingering one-shot active flag so tick isn't blocked when switching modes
+        #     try:
+        #         self._one_shot_active = False
+        #     except Exception:
+        #         pass
+        #     # initialize last trigger state to the current input so falling-edge detection is consistent
+        #     try:
+        #         val = self._read_trigger()
+        #         self._last_trig = val
+        #     except Exception:
+        #         self._last_trig = None
+        #     # ensure outputs are in known state (no accidental arming)
+        #     try:
+        #         self._write_outputs(0, 0, 0)
+        #     except Exception:
+        #         pass
+        # except Exception:
+        #     pass
         self.status.emit(f"Mode set to {mode}")
 
     @QtCore.pyqtSlot(int)
