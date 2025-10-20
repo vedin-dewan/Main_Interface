@@ -122,9 +122,9 @@ class KinesisFireIO(QtCore.QObject):
             if not self.dev.IsSettingsInitialized():
                 self.dev.WaitForSettingsInitialized(10000)
             self.dev.StartPolling(int(self.cfg.poll_period_s * 1000 / 2) or 5)
-            time.sleep(0.25)
+            time.sleep(0.2)
             self.dev.EnableDevice()
-            time.sleep(0.25)
+            time.sleep(0.1)
             # Default safe state: place the KSC101 in manual mode and ensure
             # the shutter is closed/off. This avoids leaving the solenoid
             # energized or in single-shot mode on application start.
@@ -513,6 +513,7 @@ class KinesisFireIO(QtCore.QObject):
         # If a single sequence or a one-shot is running, let that owner own the outputs.
         # This prevents the periodic poll from immediately clearing outputs set by a
         # one-shot pulse.
+        # (diagnostic logging removed)
         if self._in_single_sequence or getattr(self, '_one_shot_active', False):
             return
 
