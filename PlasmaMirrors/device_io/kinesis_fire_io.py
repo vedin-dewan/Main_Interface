@@ -98,9 +98,6 @@ class KinesisFireIO(QtCore.QObject):
         # one-shot state
         self._one_shot_active = False
         # one-shot state complete
-        # cached Kinesis state to avoid redundant SetOperatingState calls
-        self._kinesis_last_mode = None
-        self._kinesis_last_state = None
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
     @QtCore.pyqtSlot()
@@ -216,11 +213,13 @@ class KinesisFireIO(QtCore.QObject):
         if self._in_single_sequence and mode != "single":
             self._abort_single_sequence()
         self._mode = mode
-        # pre-configure device state: apply mode and desired shutter state together
+        # pre-configure device state; tick does the rest
         if mode == "continuous":
-            self._set_mode_internal("manual", desired_state='active')
+            self._set_mode_internal("manual")
+            self._set_shutter_on()
         else:
-            self._set_mode_internal("triggered", desired_state='active')
+            self._set_mode_internal("triggered")
+            self._set_shutter_on()
         # Reset transient arm state so toggling modes doesn't inherit stale requests
         try:
             self._fire_requested = False
@@ -276,9 +275,13 @@ class KinesisFireIO(QtCore.QObject):
         # shutter is enabled immediately so the first shot or burst isn't missed
         # while waiting for the periodic poll.
         try:
-            # put device into triggered mode and enable shutter together
+            # put device into triggered mode and enable shutter
             try:
-                self._set_mode_internal("triggered", desired_state='active')
+                self._set_mode_internal("triggered")
+            except Exception:
+                pass
+            try:
+                self._set_shutter_on()
             except Exception:
                 pass
         except Exception:
@@ -317,11 +320,7 @@ class KinesisFireIO(QtCore.QObject):
             pass
         return sorted(ser)
 
-    def _set_mode_internal(self, mode_key: str, desired_state: Optional[str] = None):
-        """Set Kinesis operating mode. If desired_state is provided ('active'|'inactive'),
-        apply it immediately after changing mode. This keeps mode+state transitions atomic
-        from our thread and reduces transient implicit state flips by the device.
-        """
+    def _set_mode_internal(self, mode_key: str):
         if self.dev is None:
             return
         try:
@@ -334,22 +333,6 @@ class KinesisFireIO(QtCore.QObject):
                 time.sleep(0.02)
             except Exception:
                 pass
-            # update cached mode and clear cached state so we don't skip a real change
-            try:
-                self._kinesis_last_mode = 'manual' if mode_key == 'manual' else 'triggered'
-            except Exception:
-                self._kinesis_last_mode = None
-            try:
-                # mode changes may implicitly flip the operating state; clear cached state
-                self._kinesis_last_state = None
-            except Exception:
-                self._kinesis_last_state = None
-            # If a desired operating state was provided, apply it now (will use idempotent setter)
-            if desired_state is not None:
-                if desired_state == 'active':
-                    self._set_shutter_on()
-                else:
-                    self._set_shutter_off()
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingMode failed: {e}")
 
@@ -357,18 +340,12 @@ class KinesisFireIO(QtCore.QObject):
         if self.dev is None:
             return
         try:
-            # Idempotent: only call device if cached state differs
-            if getattr(self, '_kinesis_last_state', None) != 'active':
-                self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
-                # Small pause to ensure the hardware reflects the new state
-                try:
-                    time.sleep(0.02)
-                except Exception:
-                    pass
-                try:
-                    self._kinesis_last_state = 'active'
-                except Exception:
-                    self._kinesis_last_state = None
+            self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
+            # Small pause to ensure the hardware reflects the new state
+            try:
+                time.sleep(0.02)
+            except Exception:
+                pass
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Active) failed: {e}")
 
@@ -376,18 +353,12 @@ class KinesisFireIO(QtCore.QObject):
         if self.dev is None:
             return
         try:
-            # Idempotent: only call device if cached state differs
-            if getattr(self, '_kinesis_last_state', None) != 'inactive':
-                self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
-                # Small pause to ensure the hardware reflects the new state
-                try:
-                    time.sleep(0.02)
-                except Exception:
-                    pass
-                try:
-                    self._kinesis_last_state = 'inactive'
-                except Exception:
-                    self._kinesis_last_state = None
+            self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
+            # Small pause to ensure the hardware reflects the new state
+            try:
+                time.sleep(0.02)
+            except Exception:
+                pass
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
