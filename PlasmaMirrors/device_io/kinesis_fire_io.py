@@ -271,33 +271,33 @@ class KinesisFireIO(QtCore.QObject):
         self._fire_requested = True
         self._burst_count = 0
         self.shots_progress.emit(0, self._num_shots)
-        # Arm state: ensure the Kinesis device is in triggered mode and the
-        # shutter is enabled immediately so the first shot or burst isn't missed
-        # while waiting for the periodic poll.
-        try:
-            # put device into triggered mode and enable shutter
-            try:
-                self._set_mode_internal("triggered")
-            except Exception:
-                pass
-            try:
-                self._set_shutter_on()
-            except Exception:
-                pass
-        except Exception:
-            pass
-        # Ensure DAQ outputs reflect the armed condition immediately as well.
-        try:
-            val = self._read_trigger()
-            if val is None:
-                # safe default: enable shutter, leave cameras/spec lines low
-                try: self._write_outputs(1, 0, 0)
-                except Exception: pass
-            else:
-                try: self._write_outputs(1, 1 - val, 1 - val)
-                except Exception: pass
-        except Exception:
-            pass
+        # # Arm state: ensure the Kinesis device is in triggered mode and the
+        # # shutter is enabled immediately so the first shot or burst isn't missed
+        # # while waiting for the periodic poll.
+        # try:
+        #     # put device into triggered mode and enable shutter
+        #     try:
+        #         self._set_mode_internal("triggered")
+        #     except Exception:
+        #         pass
+        #     try:
+        #         self._set_shutter_on()
+        #     except Exception:
+        #         pass
+        # except Exception:
+        #     pass
+        # # Ensure DAQ outputs reflect the armed condition immediately as well.
+        # try:
+        #     val = self._read_trigger()
+        #     if val is None:
+        #         # safe default: enable shutter, leave cameras/spec lines low
+        #         try: self._write_outputs(1, 0, 0)
+        #         except Exception: pass
+        #     else:
+        #         try: self._write_outputs(1, 1 - val, 1 - val)
+        #         except Exception: pass
+        # except Exception:
+        #     pass
         self.status.emit(f"Armed ({self._mode})")
 
     # ---------- internals ----------
