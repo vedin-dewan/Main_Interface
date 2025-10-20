@@ -462,6 +462,8 @@ class KinesisFireIO(QtCore.QObject):
                 if val is None:
                     self._write_outputs(1, 0, 0)
                 else:
+                    state = self.dev.GetOperatingState()
+                    self.status.emit(f"Shutter {state}")
                     self._write_outputs(1, 1 - val, 1 - val)
                 if falling:
                     self._burst_count += 1

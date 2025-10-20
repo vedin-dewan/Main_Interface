@@ -156,7 +156,7 @@ class FireControlsPanel(QtWidgets.QWidget):
         # remember current mode and update UI
         try:
             self._current_mode = m
-            #self._update_fire_button_state()
+            self._update_fire_button_state()
         except Exception:
             pass
         self.request_mode.emit(m)
