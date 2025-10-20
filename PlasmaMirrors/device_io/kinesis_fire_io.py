@@ -434,6 +434,8 @@ class KinesisFireIO(QtCore.QObject):
         falling = (last == 1 and val == 0)
 
         if self._mode == "continuous":
+            #IMP: make shutter inactive before changing modes
+            self._set_shutter_off()
             self._set_mode_internal("manual")
             self._set_shutter_on()
             
@@ -459,9 +461,6 @@ class KinesisFireIO(QtCore.QObject):
             
             if self._fire_requested:
                 # follow inverted trigger while armed
-                state = self.dev.GetOperatingState()
-                self.status.emit(f"Shutter {state}")
-                time.sleep(4)
                 if val is None:
                     self._write_outputs(1, 0, 0)
                 else:
