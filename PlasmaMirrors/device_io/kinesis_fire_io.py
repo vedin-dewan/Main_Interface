@@ -7,10 +7,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 from PyQt6 import QtCore
-from collections import deque
-import json
-import os
-import tempfile
 
 # -------- Optional: point this to your Kinesis install if needed --------
 KINESIS_DLL_DIR: Optional[str] = r"C:\Program Files\Thorlabs\Kinesis"  # or None
@@ -101,14 +97,13 @@ class KinesisFireIO(QtCore.QObject):
         self._single_remaining: int = 0
         # one-shot state
         self._one_shot_active = False
+        # cached last applied Kinesis mode/state to avoid redundant SetOperating calls
+        self._kinesis_last_mode = None  # 'manual'|'triggered'|None
+        self._kinesis_last_state = None # 'active'|'inactive'|None
+        # heartbeat throttling for sparse status messages
+        self._tick_count = 0
+        self._last_heartbeat_ts = 0.0
         # one-shot state complete
-
-        # --- Diagnostics (lightweight) ---
-        # Use a small in-memory ring buffer to record recent events for debugging.
-        # Disabled by default to avoid overhead; enable via enable_diagnostics(True).
-        self._diag_enabled = False
-        self._diag_capacity = 4096
-        self._diag_buf = deque(maxlen=self._diag_capacity)
 
     # ---- Slots callable from UI thread (queued to our worker thread) ----
     @QtCore.pyqtSlot()
@@ -120,9 +115,7 @@ class KinesisFireIO(QtCore.QObject):
             return
         try:
             DeviceManagerCLI.BuildDeviceList()
-            self._diag_event('open_step', {'step': 'BuildDeviceList'})
             serials = self._discover_serials()
-            self._diag_event('open_step', {'step': 'discover_serials', 'serials': serials})
             if self.cfg.serial and self.cfg.serial not in serials:
                 self.serial = self.cfg.serial
             else:
@@ -132,7 +125,6 @@ class KinesisFireIO(QtCore.QObject):
 
             self.dev = KCubeSolenoid.CreateKCubeSolenoid(self.serial)
             self.dev.Connect(self.serial)
-            self._diag_event('kinesis_connected', {'serial': self.serial})
             if not self.dev.IsSettingsInitialized():
                 self.dev.WaitForSettingsInitialized(10000)
             self.dev.StartPolling(int(self.cfg.poll_period_s * 1000 / 2) or 5)
@@ -144,7 +136,6 @@ class KinesisFireIO(QtCore.QObject):
             # energized or in single-shot mode on application start.
             self._set_mode_internal("manual")
             self._set_shutter_off()
-            self._diag_event('kinesis_safe_state_set', {'mode': 'manual', 'shutter': 'off'})
             # Seed last trigger value so edge detection works immediately.
             try:
                 val = self._read_trigger()
@@ -154,7 +145,6 @@ class KinesisFireIO(QtCore.QObject):
             self.connected.emit(self.serial)
             self.log.emit(f"KSC101 connected (serial {self.serial}).")
         except Exception as e:
-            self._diag_event('open_error', {'error': str(e)})
             self.error.emit(f"Kinesis open failed: {e}")
             self.dev = None
 
@@ -173,9 +163,7 @@ class KinesisFireIO(QtCore.QObject):
                 self.in_task = nidaqmx.Task()
                 self.in_task.di_channels.add_di_chan(self.cfg.input_trigger)
                 self._write_outputs(0, 0, 0)
-                self._diag_event('daq_out_init', {})
             except Exception as e:
-                self._diag_event('daq_open_error', {'error': str(e)})
                 self.error.emit(f"NI-DAQ open failed: {e}")
                 self.out_task = None
                 self.in_task = None
@@ -187,7 +175,6 @@ class KinesisFireIO(QtCore.QObject):
         self.timer.setInterval(int(self.cfg.poll_period_s * 1000))
         self.timer.timeout.connect(self._tick)
         self.timer.start()
-        self._diag_event('timer_started', {'interval_ms': int(self.cfg.poll_period_s * 1000)})
         self.status.emit(f"Ready (mode: {self._mode}, serial: {self.serial or 'n/a'})")
 
     @QtCore.pyqtSlot()
@@ -290,10 +277,6 @@ class KinesisFireIO(QtCore.QObject):
         self._fire_requested = True
         self._burst_count = 0
         self.shots_progress.emit(0, self._num_shots)
-        try:
-            self._diag_event('fire_armed', {'mode': self._mode, 'num_shots': self._num_shots})
-        except Exception:
-            pass
         # Arm state: ensure the Kinesis device is in triggered mode and the
         # shutter is enabled immediately so the first shot or burst isn't missed
         # while waiting for the periodic poll.
@@ -322,10 +305,6 @@ class KinesisFireIO(QtCore.QObject):
         except Exception:
             pass
         self.status.emit(f"Armed ({self._mode})")
-        try:
-            self._diag_event('fire_arm_complete', {'val': val if 'val' in locals() else None})
-        except Exception:
-            pass
 
     # ---------- internals ----------
     def _discover_serials(self) -> list[str]:
@@ -351,67 +330,75 @@ class KinesisFireIO(QtCore.QObject):
         if self.dev is None:
             return
         try:
-            if mode_key == "manual":
-                self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Manual)
-            else:
-                self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Triggered)
-            # Let the device apply its operating mode before changing state.
-            try:
-                time.sleep(0.02)
-            except Exception:
-                pass
-            try:
-                self._diag_event('kinesis_set_mode', {'mode_key': mode_key})
-            except Exception:
-                pass
+            # idempotent: only call into Kinesis if desired mode differs from last applied
+            desired = 'manual' if mode_key == 'manual' else 'triggered'
+            if desired != getattr(self, '_kinesis_last_mode', None):
+                if mode_key == "manual":
+                    self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Manual)
+                else:
+                    self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Triggered)
+                # Let the device apply its operating mode before changing state.
+                try:
+                    time.sleep(0.02)
+                except Exception:
+                    pass
+                self._kinesis_last_mode = desired
         except Exception as e:
-            try:
-                self._diag_event('kinesis_set_mode_error', {'error': str(e)})
-            except Exception:
-                pass
             self.error.emit(f"Kinesis SetOperatingMode failed: {e}")
 
     def _set_shutter_on(self):
         if self.dev is None:
             return
         try:
-            self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
-            # Small pause to ensure the hardware reflects the new state
-            try:
-                time.sleep(0.02)
-            except Exception:
-                pass
-            try:
-                self._diag_event('kinesis_set_state', {'state': 'active'})
-            except Exception:
-                pass
+            # idempotent: only change state if differs
+            if getattr(self, '_kinesis_last_state', None) != 'active':
+                self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
+                # Small pause to ensure the hardware reflects the new state
+                try:
+                    time.sleep(0.02)
+                except Exception:
+                    pass
+                self._kinesis_last_state = 'active'
         except Exception as e:
-            try:
-                self._diag_event('kinesis_set_state_error', {'error': str(e)})
-            except Exception:
-                pass
             self.error.emit(f"Kinesis SetOperatingState(Active) failed: {e}")
 
     def _set_shutter_off(self):
         if self.dev is None:
             return
         try:
-            self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
-            # Small pause to ensure the hardware reflects the new state
-            try:
-                time.sleep(0.02)
-            except Exception:
-                pass
-            try:
-                self._diag_event('kinesis_set_state', {'state': 'inactive'})
-            except Exception:
-                pass
+            # idempotent: only change state if differs
+            if getattr(self, '_kinesis_last_state', None) != 'inactive':
+                self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
+                # Small pause to ensure the hardware reflects the new state
+                try:
+                    time.sleep(0.02)
+                except Exception:
+                    pass
+                self._kinesis_last_state = 'inactive'
+        except Exception as e:
+            self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
+
+    @QtCore.pyqtSlot()
+    def status_snapshot(self):
+        """Emit a compact status line suitable for pasting here (low verbosity)."""
+        try:
+            dev_present = bool(self.dev is not None)
+            out_task = bool(self.out_task is not None)
+            in_task = bool(self.in_task is not None)
+            mode = getattr(self, '_mode', None)
+            k_mode = getattr(self, '_kinesis_last_mode', None)
+            k_state = getattr(self, '_kinesis_last_state', None)
+            last_trig = getattr(self, '_last_trig', None)
+            armed = bool(self._fire_requested)
+            ts = time.time()
+            msg = (f"Kinesis snapshot: dev={dev_present} out_task={out_task} in_task={in_task} "
+                   f"mode={mode} k_mode={k_mode} k_state={k_state} last_trig={last_trig} armed={armed} ts={ts:.3f}")
+            self.log.emit(msg)
         except Exception as e:
             try:
-                self._diag_event('kinesis_set_state_error', {'error': str(e)})
+                self.error.emit(f"status_snapshot failed: {e}")
             except Exception:
                 pass
-            self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
     def _write_outputs(self, shutter: int, cam: int, spec: int):
         try:
@@ -423,32 +410,15 @@ class KinesisFireIO(QtCore.QObject):
             return
         try:
             self.out_task.write(vals)
-            try:
-                self._diag_event('daq_write', {'vals': [int(bool(v)) for v in vals]})
-            except Exception:
-                pass
         except Exception as e:
-            try:
-                self._diag_event('daq_write_error', {'error': str(e)})
-            except Exception:
-                pass
             self.error.emit(f"NI-DAQ write failed: {e}")
 
     def _read_trigger(self) -> Optional[int]:
         if self.in_task is None:
             return None
         try:
-            val = int(bool(self.in_task.read()))
-            try:
-                self._diag_event('daq_read', {'val': val})
-            except Exception:
-                pass
-            return val
+            return int(bool(self.in_task.read()))
         except Exception as e:
-            try:
-                self._diag_event('daq_read_error', {'error': str(e)})
-            except Exception:
-                pass
             self.error.emit(f"NI-DAQ read failed (will retry): {e}")
             try:
                 self.in_task.close()
@@ -461,147 +431,6 @@ class KinesisFireIO(QtCore.QObject):
                 self.in_task = None
             return None
 
-    # ---- Diagnostics API ----
-    def _diag_event(self, ev_type: str, payload: dict | None = None) -> None:
-        """Record a small timestamped event in the ring buffer when diagnostics enabled."""
-        try:
-            if not getattr(self, '_diag_enabled', False):
-                return
-            entry = {'ts': time.time(), 'ev': str(ev_type), 'payload': payload or {}}
-            try:
-                self._diag_buf.append(entry)
-            except Exception:
-                # buffer append must not raise
-                pass
-        except Exception:
-            pass
-
-    @QtCore.pyqtSlot(bool)
-    def enable_diagnostics(self, ena: bool) -> None:
-        try:
-            self._diag_enabled = bool(ena)
-            if self._diag_enabled:
-                try:
-                    self._diag_buf.clear()
-                except Exception:
-                    pass
-            try:
-                self.log.emit(f"Diagnostics {'enabled' if self._diag_enabled else 'disabled'}")
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    def get_diagnostics(self) -> list:
-        """Return a shallow copy of current diagnostic events (fast)."""
-        try:
-            return list(self._diag_buf)
-        except Exception:
-            return []
-
-    @QtCore.pyqtSlot(str)
-    def dump_diagnostics(self, path: str) -> None:
-        """Persist current diagnostic buffer to JSON file (best-effort).
-
-        Attempt, in order: the requested path, project parameters folder,
-        system temp directory, current working directory, and the module
-        folder. Emit clear status or error messages so the caller knows
-        what happened.
-        """
-        # record the request in the in-memory diagnostics as well
-        try:
-            self._diag_event('dump_requested', {'requested_path': path})
-        except Exception:
-            pass
-
-        try:
-            data = self.get_diagnostics()
-        except Exception as e:
-            try: self.error.emit(f"Failed to collect diagnostics: {e}")
-            except Exception: pass
-            return
-
-        tried = []
-
-        def try_write(p: str) -> bool:
-            tried.append(p)
-            try:
-                parent = os.path.dirname(p) or ''
-                if parent:
-                    os.makedirs(parent, exist_ok=True)
-            except Exception as e:
-                # record but continue to attempt write
-                try:
-                    self.log.emit(f"dump_diagnostics: could not create parent {parent}: {e}")
-                except Exception:
-                    pass
-            try:
-                with open(p, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2)
-                try:
-                    self.status.emit(f"Diagnostics dumped to {p}")
-                except Exception:
-                    pass
-                try:
-                    self._diag_event('dump_written', {'path': p})
-                except Exception:
-                    pass
-                return True
-            except Exception as e:
-                try:
-                    self.log.emit(f"dump_diagnostics: write failed for {p}: {e}")
-                except Exception:
-                    pass
-                try:
-                    self._diag_event('dump_write_error', {'path': p, 'error': str(e)})
-                except Exception:
-                    pass
-                return False
-
-        # 1) Try requested path first
-        if path and try_write(path):
-            return
-
-        # 2) Try project parameters folder
-        try:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            params_dir = os.path.abspath(os.path.join(base_dir, '..', 'parameters'))
-            alt1 = os.path.join(params_dir, 'pm_diag.json')
-            if try_write(alt1):
-                return
-        except Exception:
-            pass
-
-        # 3) Try system temp directory
-        try:
-            alt2 = os.path.join(tempfile.gettempdir(), 'pm_diag.json')
-            if try_write(alt2):
-                return
-        except Exception:
-            pass
-
-        # 4) Try current working directory
-        try:
-            alt3 = os.path.join(os.getcwd(), 'pm_diag.json')
-            if try_write(alt3):
-                return
-        except Exception:
-            pass
-
-        # 5) Try module directory as a last resort
-        try:
-            alt4 = os.path.join(base_dir, 'pm_diag.json')
-            if try_write(alt4):
-                return
-        except Exception:
-            pass
-
-        # Nothing worked — emit a consolidated error
-        try:
-            self.error.emit(f"Failed to dump diagnostics. Tried paths: {tried}")
-        except Exception:
-            pass
-
     # -------- single-sequence state machine (non-blocking) --------
     def _start_single_sequence(self, n: int):
         """Begin N pulses in succession using QTimer callbacks (no sleeps)."""
@@ -611,10 +440,6 @@ class KinesisFireIO(QtCore.QObject):
         self._abort_single_sequence()
         self._in_single_sequence = True
         self._single_remaining = int(n)
-        try:
-            self._diag_event('single_start', {'n': n})
-        except Exception:
-            pass
         self.shots_progress.emit(0, n)
         self.status.emit(f"Single: firing {n} shot(s)")
         self._single__pulse_on()
@@ -629,10 +454,6 @@ class KinesisFireIO(QtCore.QObject):
             except Exception:
                 pass
             self._write_outputs(1, 1, 1)
-            try:
-                self._diag_event('single_pulse_on', {'remaining': self._single_remaining})
-            except Exception:
-                pass
         except Exception:
             pass
         QtCore.QTimer.singleShot(self.cfg.pulse_ms, self._single__pulse_off)
@@ -647,10 +468,6 @@ class KinesisFireIO(QtCore.QObject):
             except Exception:
                 pass
             self._write_outputs(0, 0, 0)
-            try:
-                self._diag_event('single_pulse_off', {'remaining_after': self._single_remaining})
-            except Exception:
-                pass
         except Exception:
             pass
         # progress update for the shot we just completed
@@ -693,10 +510,6 @@ class KinesisFireIO(QtCore.QObject):
                 except Exception:
                     pass
                 self._write_outputs(1, 1, 1)
-                try:
-                    self._diag_event('one_shot_on', {})
-                except Exception:
-                    pass
             except Exception:
                 pass
             # schedule turning outputs low and emitting done
@@ -708,10 +521,9 @@ class KinesisFireIO(QtCore.QObject):
                     except Exception:
                         pass
                     self._write_outputs(0, 0, 0)
-                    try:
-                        self._diag_event('one_shot_off', {})
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
+                try:
                     # emit a per-shot completion signal so the UI can react (rename etc)
                     try:
                         # emit DAQ timestamp so UI and renamer can use a common timestamp
@@ -741,17 +553,30 @@ class KinesisFireIO(QtCore.QObject):
         # one-shot pulse.
         # (diagnostic logging removed)
         if self._in_single_sequence or getattr(self, '_one_shot_active', False):
-            try:
-                self._diag_event('tick_skipped', {'in_single': bool(self._in_single_sequence), 'one_shot_active': bool(getattr(self, '_one_shot_active', False))})
-            except Exception:
-                pass
             return
 
-        val = self._read_trigger()
+        # bookkeeping for heartbeat diagnostics (low-rate)
         try:
-            self._diag_event('tick', {'val': val, 'last': self._last_trig})
+            self._tick_count = getattr(self, '_tick_count', 0) + 1
+        except Exception:
+            self._tick_count = 1
+        now_ts = time.time()
+        # emit a sparse heartbeat at most once every 5 seconds
+        try:
+            if (now_ts - getattr(self, '_last_heartbeat_ts', 0.0)) >= 5.0:
+                try:
+                    # compact heartbeat
+                    self.log.emit(f"tick hb: count={self._tick_count} mode={getattr(self,'_mode',None)} last_trig={getattr(self,'_last_trig',None)}")
+                except Exception:
+                    pass
+                try:
+                    self._last_heartbeat_ts = now_ts
+                except Exception:
+                    pass
         except Exception:
             pass
+
+        val = self._read_trigger()
         last = self._last_trig
         falling = (last == 1 and val == 0)
 
