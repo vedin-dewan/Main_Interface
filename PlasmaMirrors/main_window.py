@@ -366,7 +366,7 @@ class MainWindow(QtWidgets.QMainWindow):
             out_pin_cam="Dev1/port0/line2",
             out_pin_spec="Dev1/port0/line3",
             input_trigger="Dev1/PFI0",
-            poll_period_s=0.01,
+            poll_period_s=0.02,
             start_enabled=False,
         )
         self.fire_io = KinesisFireIO(cfg)

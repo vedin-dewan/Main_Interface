@@ -122,9 +122,9 @@ class KinesisFireIO(QtCore.QObject):
             if not self.dev.IsSettingsInitialized():
                 self.dev.WaitForSettingsInitialized(10000)
             self.dev.StartPolling(int(self.cfg.poll_period_s * 1000 / 2) or 5)
-            time.sleep(0.2)
+            time.sleep(0.25)
             self.dev.EnableDevice()
-            time.sleep(0.1)
+            time.sleep(0.25)
             # Default safe state: place the KSC101 in manual mode and ensure
             # the shutter is closed/off. This avoids leaving the solenoid
             # energized or in single-shot mode on application start.
@@ -330,7 +330,7 @@ class KinesisFireIO(QtCore.QObject):
                 self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Triggered)
             # Let the device apply its operating mode before changing state.
             try:
-                time.sleep(0.02)
+                time.sleep(0.25)
             except Exception:
                 pass
         except Exception as e:
@@ -343,7 +343,7 @@ class KinesisFireIO(QtCore.QObject):
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
             # Small pause to ensure the hardware reflects the new state
             try:
-                time.sleep(0.02)
+                time.sleep(0.25)
             except Exception:
                 pass
         except Exception as e:
@@ -356,7 +356,7 @@ class KinesisFireIO(QtCore.QObject):
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
             # Small pause to ensure the hardware reflects the new state
             try:
-                time.sleep(0.02)
+                time.sleep(0.25)
             except Exception:
                 pass
         except Exception as e:
