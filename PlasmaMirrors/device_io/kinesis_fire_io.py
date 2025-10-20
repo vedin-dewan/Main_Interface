@@ -9,6 +9,7 @@ from typing import Optional
 from PyQt6 import QtCore
 from collections import deque
 import json
+import os
 
 # -------- Optional: point this to your Kinesis install if needed --------
 KINESIS_DLL_DIR: Optional[str] = r"C:\Program Files\Thorlabs\Kinesis"  # or None
@@ -503,6 +504,14 @@ class KinesisFireIO(QtCore.QObject):
         try:
             data = self.get_diagnostics()
             try:
+                # Ensure parent directory exists where possible
+                try:
+                    parent = os.path.dirname(path) or ''
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                except Exception:
+                    pass
+
                 with open(path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2)
                 try:
@@ -510,6 +519,28 @@ class KinesisFireIO(QtCore.QObject):
                 except Exception:
                     pass
             except Exception as e:
+                # Try fallback into the project's parameters folder
+                try:
+                    base_dir = os.path.dirname(os.path.abspath(__file__))
+                    params_dir = os.path.join(base_dir, '..', 'parameters')
+                    params_dir = os.path.abspath(params_dir)
+                    try:
+                        os.makedirs(params_dir, exist_ok=True)
+                    except Exception:
+                        pass
+                    alt = os.path.join(params_dir, 'pm_diag.json')
+                    try:
+                        with open(alt, 'w', encoding='utf-8') as f2:
+                            json.dump(data, f2, indent=2)
+                        try:
+                            self.status.emit(f"Diagnostics dumped to fallback {alt}")
+                        except Exception:
+                            pass
+                        return
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
                 try:
                     self.error.emit(f"Failed to dump diagnostics: {e}")
                 except Exception:
