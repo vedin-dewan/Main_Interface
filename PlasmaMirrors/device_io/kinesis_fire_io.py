@@ -461,6 +461,7 @@ class KinesisFireIO(QtCore.QObject):
                 # follow inverted trigger while armed
                 state = self.dev.GetOperatingState()
                 self.status.emit(f"Shutter {state}")
+                time.sleep(4)
                 if val is None:
                     self._write_outputs(1, 0, 0)
                 else:
