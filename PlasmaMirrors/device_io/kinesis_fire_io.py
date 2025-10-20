@@ -46,7 +46,7 @@ class FireConfig:
     pulse_ms: int = 200                           # high time per shot
     gap_ms: int = 200                             # low time between shots
     single_waits_for_edge: bool = True            # if True: start train at next falling edge
-    debug: bool = True                            # enable verbose debug logging
+    debug: bool = False                            # enable verbose debug logging
 
 
 class KinesisFireIO(QtCore.QObject):
