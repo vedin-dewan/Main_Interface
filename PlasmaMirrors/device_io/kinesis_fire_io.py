@@ -10,6 +10,7 @@ from PyQt6 import QtCore
 from collections import deque
 import json
 import os
+import tempfile
 
 # -------- Optional: point this to your Kinesis install if needed --------
 KINESIS_DLL_DIR: Optional[str] = r"C:\Program Files\Thorlabs\Kinesis"  # or None
@@ -500,51 +501,104 @@ class KinesisFireIO(QtCore.QObject):
 
     @QtCore.pyqtSlot(str)
     def dump_diagnostics(self, path: str) -> None:
-        """Persist current diagnostic buffer to JSON file (best-effort)."""
+        """Persist current diagnostic buffer to JSON file (best-effort).
+
+        Attempt, in order: the requested path, project parameters folder,
+        system temp directory, current working directory, and the module
+        folder. Emit clear status or error messages so the caller knows
+        what happened.
+        """
+        # record the request in the in-memory diagnostics as well
+        try:
+            self._diag_event('dump_requested', {'requested_path': path})
+        except Exception:
+            pass
+
         try:
             data = self.get_diagnostics()
+        except Exception as e:
+            try: self.error.emit(f"Failed to collect diagnostics: {e}")
+            except Exception: pass
+            return
+
+        tried = []
+
+        def try_write(p: str) -> bool:
+            tried.append(p)
             try:
-                # Ensure parent directory exists where possible
+                parent = os.path.dirname(p) or ''
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+            except Exception as e:
+                # record but continue to attempt write
                 try:
-                    parent = os.path.dirname(path) or ''
-                    if parent:
-                        os.makedirs(parent, exist_ok=True)
+                    self.log.emit(f"dump_diagnostics: could not create parent {parent}: {e}")
                 except Exception:
                     pass
-
-                with open(path, 'w', encoding='utf-8') as f:
+            try:
+                with open(p, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2)
                 try:
-                    self.status.emit(f"Diagnostics dumped to {path}")
+                    self.status.emit(f"Diagnostics dumped to {p}")
                 except Exception:
                     pass
+                try:
+                    self._diag_event('dump_written', {'path': p})
+                except Exception:
+                    pass
+                return True
             except Exception as e:
-                # Try fallback into the project's parameters folder
                 try:
-                    base_dir = os.path.dirname(os.path.abspath(__file__))
-                    params_dir = os.path.join(base_dir, '..', 'parameters')
-                    params_dir = os.path.abspath(params_dir)
-                    try:
-                        os.makedirs(params_dir, exist_ok=True)
-                    except Exception:
-                        pass
-                    alt = os.path.join(params_dir, 'pm_diag.json')
-                    try:
-                        with open(alt, 'w', encoding='utf-8') as f2:
-                            json.dump(data, f2, indent=2)
-                        try:
-                            self.status.emit(f"Diagnostics dumped to fallback {alt}")
-                        except Exception:
-                            pass
-                        return
-                    except Exception:
-                        pass
+                    self.log.emit(f"dump_diagnostics: write failed for {p}: {e}")
                 except Exception:
                     pass
                 try:
-                    self.error.emit(f"Failed to dump diagnostics: {e}")
+                    self._diag_event('dump_write_error', {'path': p, 'error': str(e)})
                 except Exception:
                     pass
+                return False
+
+        # 1) Try requested path first
+        if path and try_write(path):
+            return
+
+        # 2) Try project parameters folder
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            params_dir = os.path.abspath(os.path.join(base_dir, '..', 'parameters'))
+            alt1 = os.path.join(params_dir, 'pm_diag.json')
+            if try_write(alt1):
+                return
+        except Exception:
+            pass
+
+        # 3) Try system temp directory
+        try:
+            alt2 = os.path.join(tempfile.gettempdir(), 'pm_diag.json')
+            if try_write(alt2):
+                return
+        except Exception:
+            pass
+
+        # 4) Try current working directory
+        try:
+            alt3 = os.path.join(os.getcwd(), 'pm_diag.json')
+            if try_write(alt3):
+                return
+        except Exception:
+            pass
+
+        # 5) Try module directory as a last resort
+        try:
+            alt4 = os.path.join(base_dir, 'pm_diag.json')
+            if try_write(alt4):
+                return
+        except Exception:
+            pass
+
+        # Nothing worked — emit a consolidated error
+        try:
+            self.error.emit(f"Failed to dump diagnostics. Tried paths: {tried}")
         except Exception:
             pass
 
