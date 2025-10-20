@@ -106,11 +106,6 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             # fallback default
             self._rename_max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)
-        # Load persisted shot counter (if present)
-        try:
-            self._load_shot_counter()
-        except Exception:
-            pass
         self.pm_panel= PMPanel()
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
@@ -390,11 +385,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # wire Reset Counter button -> reset internal state and UI
         try:
             self.fire_panel.request_reset.connect(self._on_reset_counter)
-        except Exception:
-            pass
-        # handle Configure/Save counter change from the FireControlsPanel
-        try:
-            self.fire_panel.request_set_counter.connect(lambda v: QtCore.QMetaObject.invokeMethod(self, '_on_set_counter', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, int(v))))
         except Exception:
             pass
         # forward Fire to IO and also handle UI-side bookkeeping in MainWindow
@@ -742,30 +732,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     stable_s = float(getattr(self, '_rename_stable_time', 0.3)) if getattr(self, '_rename_stable_time', None) is not None else 0.3
                     # perform burst save (blocking poll similar to single-shot rename)
                     try:
-                        # capture the displayed shot counter BEFORE firing so the Burst_n folder
-                        # can be named according to the current shot counter value
-                        try:
-                            shot_counter_pre = int(self.fire_panel.disp_counter.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None) else 0
-                        except Exception:
-                            shot_counter_pre = 0
-
-                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s, shot_index_pre=shot_counter_pre)
-                        # If burst save succeeded, increment the displayed shot counter by 1
-                        try:
-                            if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
-                                newval = int(self.fire_panel.disp_counter.value()) + 1
-                                # Use centralized setter so the new value is persisted to disk
-                                try:
-                                    self._set_shot_counter(newval)
-                                except Exception:
-                                    try: self.fire_panel.disp_counter.setValue(newval)
-                                    except Exception: pass
-                                try:
-                                    self.status_panel.append_line(f'Burst complete: shot counter incremented to {newval}')
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
+                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s)
                     except Exception as e:
                         try: self.status_panel.append_line(f'Burst save failed: {e}')
                         except Exception: pass
@@ -852,135 +819,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_reset_counter(self):
         """Reset shot counter and per-shot internal state on user request."""
         try:
-            # Use centralized setter which also persists
-            try:
-                self._set_shot_counter(0)
-            except Exception:
-                # fallback to direct set
-                try: self.fire_panel.disp_counter.setValue(0)
-                except Exception: pass
+            self.fire_panel.disp_counter.setValue(0)
             self._per_shot_current = 0
             self._per_shot_active = False
             try: self._per_shot_target = None
             except Exception: pass
         except Exception:
             pass
-
-    @QtCore.pyqtSlot(int)
-    def _on_set_counter(self, value: int):
-        """Called when the FireControlsPanel Configure->Save emits a new counter value."""
-        try:
-            # Centralized setter persists by default
-            try:
-                self._set_shot_counter(int(value))
-            except Exception:
-                try:
-                    if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
-                        self.fire_panel.disp_counter.setValue(int(value))
-                except Exception:
-                    pass
-            try:
-                self.status_panel.append_line(f"Shot counter set to {int(value)} via Configure")
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    # ---- Shot counter persistence helpers ----
-    def _shot_counter_path(self) -> str:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        params_dir = os.path.join(base_dir, 'parameters')
-        try:
-            os.makedirs(params_dir, exist_ok=True)
-        except Exception:
-            pass
-        return os.path.join(params_dir, 'shot_counter.json')
-
-    def _load_shot_counter(self) -> None:
-        """Load persisted shot counter into UI and runtime state. If missing, do nothing."""
-        try:
-            path = self._shot_counter_path()
-            if not os.path.exists(path):
-                return
-            try:
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            except Exception:
-                return
-            if not isinstance(data, dict):
-                return
-            val = data.get('shot_counter')
-            if val is None:
-                return
-            try:
-                v = int(val)
-            except Exception:
-                return
-            # apply to UI and runtime without persisting (we just loaded it)
-            try:
-                self._set_shot_counter(v, persist=False)
-            except Exception:
-                try:
-                    if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
-                        self.fire_panel.disp_counter.setValue(v)
-                except Exception:
-                    pass
-            try:
-                self._per_shot_current = v
-            except Exception:
-                pass
-            try:
-                self.status_panel.append_line(f"Loaded shot counter = {v} from disk")
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    def _save_shot_counter(self, value: int) -> None:
-        """Persist shot counter value to parameters/shot_counter.json (best-effort)."""
-        try:
-            path = self._shot_counter_path()
-            payload = {'shot_counter': int(value)}
-            try:
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(payload, f, indent=2)
-                try:
-                    self.status_panel.append_line(f"Saved shot counter = {int(value)}")
-                except Exception:
-                    pass
-            except Exception as e:
-                try: self.status_panel.append_line(f"Failed to save shot counter: {e}")
-                except Exception: pass
-        except Exception:
-            pass
-
-    def _set_shot_counter(self, value: int, persist: bool = True) -> None:
-        """Central setter for the shot counter.
-
-        Updates UI and runtime counter and optionally persists to disk. This ensures the
-        JSON file is updated whenever the UI counter changes.
-        """
-        try:
-            v = int(value)
-        except Exception:
-            return
-        try:
-            if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None):
-                try:
-                    self.fire_panel.disp_counter.setValue(v)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            self._per_shot_current = v
-        except Exception:
-            pass
-        if persist:
-            try:
-                self._save_shot_counter(v)
-            except Exception:
-                pass
 
     def _on_single_shot_done(self, event_ts: float = None):
         """Called when the fire worker signals that a single shot/pulse finished.
@@ -1180,7 +1025,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try: self.status_panel.append_line(f"Rename exception: {e}")
             except Exception: pass
 
-    def _handle_burst_save(self, outdir: str, burst_rel: str, tokens: list, experiment: str, timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3, shot_index_pre: int = None):
+    def _handle_burst_save(self, outdir: str, burst_rel: str, tokens: list, experiment: str, timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3):
         """Create the burst folder and move/rename files matching tokens into it.
 
         Behavior:
@@ -1207,39 +1052,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
                 return
 
-            # find next Burst_n unless caller provided shot_index_pre to select folder
+            # find next Burst_n
             try:
-                if shot_index_pre is not None:
-                    # use provided shot index as the burst folder number
-                    nextn = int(shot_index_pre)
-                else:
-                    existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
-                    maxn = -1
-                    for d in existing:
-                        try:
-                            n = int(d.split('_', 1)[1])
-                            if n > maxn:
-                                maxn = n
-                        except Exception:
-                            continue
-                    nextn = maxn + 1
-                burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
+                existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
             except Exception:
+                existing = []
+            maxn = -1
+            for d in existing:
                 try:
-                    # fallback to next available numbering
-                    existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
+                    n = int(d.split('_', 1)[1])
+                    if n > maxn:
+                        maxn = n
                 except Exception:
-                    existing = []
-                maxn = -1
-                for d in existing:
-                    try:
-                        n = int(d.split('_', 1)[1])
-                        if n > maxn:
-                            maxn = n
-                    except Exception:
-                        continue
-                nextn = maxn + 1
-                burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
+                    continue
+            nextn = maxn + 1
+            burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
             try:
                 os.makedirs(burst_dir, exist_ok=False)
             except Exception:
