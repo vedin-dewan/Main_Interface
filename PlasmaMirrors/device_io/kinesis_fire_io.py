@@ -205,35 +205,14 @@ class KinesisFireIO(QtCore.QObject):
         if self._in_single_sequence and mode != "single":
             self._abort_single_sequence()
         self._mode = mode
-        # pre-configure device state; tick does the rest
-        if mode == "continuous":
-            self._set_mode_internal("manual")
-            self._set_shutter_on()
-        else:
-            self._set_mode_internal("triggered")
-            self._set_shutter_on()
-        # # Reset transient arm state so toggling modes doesn't inherit stale requests
-        # try:
-        #     self._fire_requested = False
-        #     self._burst_count = 0
-        #     # clear any lingering one-shot active flag so tick isn't blocked when switching modes
-        #     try:
-        #         self._one_shot_active = False
-        #     except Exception:
-        #         pass
-        #     # initialize last trigger state to the current input so falling-edge detection is consistent
-        #     try:
-        #         val = self._read_trigger()
-        #         self._last_trig = val
-        #     except Exception:
-        #         self._last_trig = None
-        #     # ensure outputs are in known state (no accidental arming)
-        #     try:
-        #         self._write_outputs(0, 0, 0)
-        #     except Exception:
-        #         pass
-        # except Exception:
-        #     pass
+        # # pre-configure device state; tick does the rest
+        # if mode == "continuous":
+        #     self._set_mode_internal("manual")
+        #     self._set_shutter_on()
+        # else:
+        #     self._set_mode_internal("triggered")
+        #     self._set_shutter_on()
+        
         self.status.emit(f"Mode set to {mode}")
 
     @QtCore.pyqtSlot(int)
