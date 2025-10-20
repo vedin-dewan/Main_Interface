@@ -459,11 +459,11 @@ class KinesisFireIO(QtCore.QObject):
             
             if self._fire_requested:
                 # follow inverted trigger while armed
+                state = self.dev.GetOperatingState()
+                self.status.emit(f"Shutter {state}")
                 if val is None:
                     self._write_outputs(1, 0, 0)
                 else:
-                    state = self.dev.GetOperatingState()
-                    self.status.emit(f"Shutter {state}")
                     self._write_outputs(1, 1 - val, 1 - val)
                 if falling:
                     self._burst_count += 1
@@ -472,7 +472,7 @@ class KinesisFireIO(QtCore.QObject):
                         self._fire_requested = False
                         self._burst_count = 0
                         self._write_outputs(0, 0, 0)
-                        self.status.emit("Burst complete")
+                        #self.status.emit("Burst complete")
             else:
                 self._write_outputs(0, 0, 0)
 
