@@ -265,12 +265,12 @@ class KinesisFireIO(QtCore.QObject):
                     except Exception:
                         # device query failed; leave state_str None to infer
                         state_str = None
-            if state_str is None:
-                # infer based on requested mode: we request shutter ON for continuous/single/burst
-                if mode in ('continuous', 'single', 'burst'):
-                    state_str = 'Active (requested)'
-                else:
-                    state_str = 'Inactive (requested)'
+            # if state_str is None:
+            #     # infer based on requested mode: we request shutter ON for continuous/single/burst
+            #     if mode in ('continuous', 'single', 'burst'):
+            #         state_str = 'Active (requested)'
+            #     else:
+            #         state_str = 'Inactive (requested)'
             self.status.emit(f"Shutter state: {state_str}")
         except Exception:
             pass
