@@ -386,6 +386,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
         except Exception:
             pass
+        # Temporary debug UI: Dump DIAG button (click to write /tmp/pm_diag.json)
+        try:
+            from PyQt6.QtWidgets import QPushButton
+            btn = QPushButton('Dump DIAG', self)
+            btn.setToolTip('Dump fire I/O diagnostics to /tmp/pm_diag.json')
+            btn.clicked.connect(lambda: (QtCore.QMetaObject.invokeMethod(self.fire_io, 'dump_diagnostics', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(str, '/tmp/pm_diag.json')), self.status_panel.append_line('Requested diagnostics dump to /tmp/pm_diag.json')))
+            # place it in the top-right corner using absolute geometry as a temporary measure
+            try:
+                btn.setFixedSize(90, 22)
+                btn.move(self.width() - 110, 8)
+                btn.show()
+            except Exception:
+                pass
+        except Exception:
+            pass
         # Panel → IO
         self.fire_panel.request_mode.connect(self.fire_io.set_mode)
         self.fire_panel.request_shots.connect(self.fire_io.set_num_shots)
