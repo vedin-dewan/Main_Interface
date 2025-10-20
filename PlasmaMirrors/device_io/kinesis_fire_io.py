@@ -315,17 +315,18 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
     def _write_outputs(self, shutter: int, cam: int, spec: int):
-        try:
-            vals = [bool(shutter), bool(cam), bool(spec)]
-        except Exception:
-            vals = [False, False, False]
+        vals = [bool(shutter), bool(cam), bool(spec)]
+        # try:
+        #     vals = [bool(shutter), bool(cam), bool(spec)]
+        # except Exception:
+        #     vals = [False, False, False]
 
-        if self.out_task is None:
-            return
-        try:
-            self.out_task.write(vals)
-        except Exception as e:
-            self.error.emit(f"NI-DAQ write failed: {e}")
+        # if self.out_task is None:
+        #     return
+        # try:
+        #     self.out_task.write(vals)
+        # except Exception as e:
+        #     self.error.emit(f"NI-DAQ write failed: {e}")
 
     def _read_trigger(self) -> Optional[int]:
         if self.in_task is None:
@@ -478,7 +479,7 @@ class KinesisFireIO(QtCore.QObject):
             if val is None:
                 self._write_outputs(1, 0, 0)  # safe default
             else:
-                self._write_outputs(1, val, val)
+                self._write_outputs(1, 1 - val, 1 - val)
 
         elif self._mode == "single":
             self._set_mode_internal("triggered")
@@ -498,7 +499,7 @@ class KinesisFireIO(QtCore.QObject):
                 if val is None:
                     self._write_outputs(1, 0, 0)
                 else:
-                    self._write_outputs(1, val, val)
+                    self._write_outputs(1, 1 - val, 1 - val)
                 if falling:
                     self._burst_count += 1
                     self.shots_progress.emit(self._burst_count, self._num_shots)
