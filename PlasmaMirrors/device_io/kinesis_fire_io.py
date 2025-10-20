@@ -46,7 +46,7 @@ class FireConfig:
     pulse_ms: int = 200                           # high time per shot
     gap_ms: int = 200                             # low time between shots
     single_waits_for_edge: bool = True            # if True: start train at next falling edge
-    debug_trig: bool = True                      # enable trigger debug logging
+    debug: bool = False                            # enable verbose debug logging
 
 
 class KinesisFireIO(QtCore.QObject):
@@ -135,6 +135,8 @@ class KinesisFireIO(QtCore.QObject):
             try:
                 val = self._read_trigger()
                 self._last_trig = val
+                if self.cfg.debug:
+                    self.log.emit(f"[DEBUG] initial trigger seed = {val}")
             except Exception:
                 self._last_trig = None
             self.connected.emit(self.serial)
@@ -215,12 +217,23 @@ class KinesisFireIO(QtCore.QObject):
             self._abort_single_sequence()
         self._mode = mode
         # pre-configure device state; tick does the rest
+        # Add a small settle after changing the operating mode to avoid races
         if mode == "continuous":
             self._set_mode_internal("manual")
+            try:
+                time.sleep(0.03)
+            except Exception:
+                pass
             self._set_shutter_on()
         else:
             self._set_mode_internal("triggered")
+            try:
+                time.sleep(0.03)
+            except Exception:
+                pass
             self._set_shutter_on()
+        if self.cfg.debug:
+            self.log.emit(f"[DEBUG] set_mode pre-configured device to {mode}")
         # Reset transient arm state so toggling modes doesn't inherit stale requests
         try:
             self._fire_requested = False
@@ -232,15 +245,10 @@ class KinesisFireIO(QtCore.QObject):
                 pass
             # initialize last trigger state to the current input so falling-edge detection is consistent
             try:
-                # seed last trigger using a stable read
-                try:
-                    val = self._read_trigger_stable()
-                except Exception:
-                    val = self._read_trigger()
+                val = self._read_trigger()
                 self._last_trig = val
-                if getattr(self.cfg, 'debug_trig', False):
-                    try: self.log.emit(f"Mode set: seeded last_trig={self._last_trig}")
-                    except Exception: pass
+                if self.cfg.debug:
+                    self.log.emit(f"[DEBUG] set_mode seeded last_trig = {val}")
             except Exception:
                 self._last_trig = None
             # ensure outputs are in known state (no accidental arming)
@@ -296,27 +304,21 @@ class KinesisFireIO(QtCore.QObject):
             pass
         # Ensure DAQ outputs reflect the armed condition immediately as well.
         try:
-            # read a stable trigger value and seed last_trig so edge detection is ready
-            try:
-                val = self._read_trigger_stable()
-            except Exception:
-                val = self._read_trigger()
+            val = self._read_trigger()
             if val is None:
+                # safe default: enable shutter, leave cameras/spec lines low
                 try: self._write_outputs(1, 0, 0)
                 except Exception: pass
             else:
                 try: self._write_outputs(1, 1 - val, 1 - val)
                 except Exception: pass
-            # store seeded value for the poll loop
-            try:
-                self._last_trig = int(val) if val is not None else self._last_trig
-            except Exception:
-                pass
-            if getattr(self.cfg, 'debug_trig', False):
-                try: self.log.emit(f"Armed: val={val}, seeded last_trig={self._last_trig}")
-                except Exception: pass
         except Exception:
             pass
+        if self.cfg.debug:
+            try:
+                self.log.emit(f"[DEBUG] fire() read_trigger={val}")
+            except Exception:
+                pass
         self.status.emit(f"Armed ({self._mode})")
 
     # ---------- internals ----------
@@ -349,9 +351,11 @@ class KinesisFireIO(QtCore.QObject):
                 self.dev.SetOperatingMode(SolenoidStatus.OperatingModes.Triggered)
             # Let the device apply its operating mode before changing state.
             try:
-                time.sleep(0.02)
+                time.sleep(0.03)
             except Exception:
                 pass
+            if self.cfg.debug:
+                self.log.emit(f"[DEBUG] _set_mode_internal applied mode={mode_key}")
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingMode failed: {e}")
 
@@ -362,9 +366,11 @@ class KinesisFireIO(QtCore.QObject):
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
             # Small pause to ensure the hardware reflects the new state
             try:
-                time.sleep(0.02)
+                time.sleep(0.03)
             except Exception:
                 pass
+            if self.cfg.debug:
+                self.log.emit("[DEBUG] _set_shutter_on called")
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Active) failed: {e}")
 
@@ -375,9 +381,11 @@ class KinesisFireIO(QtCore.QObject):
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Inactive)
             # Small pause to ensure the hardware reflects the new state
             try:
-                time.sleep(0.02)
+                time.sleep(0.03)
             except Exception:
                 pass
+            if self.cfg.debug:
+                self.log.emit("[DEBUG] _set_shutter_off called")
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Inactive) failed: {e}")
 
@@ -395,63 +403,23 @@ class KinesisFireIO(QtCore.QObject):
             self.error.emit(f"NI-DAQ write failed: {e}")
 
     def _read_trigger(self) -> Optional[int]:
-        """Read the trigger line using a short-lived NI-DAQ Task.
-
-        This is more robust against task lifetime/driver quirks. Returns 0 or 1 on success.
-        On failure, returns the previous known trigger state if available, otherwise a safe default (1).
-        """
+        # Use an ephemeral NI-DAQ task for each read to avoid persistent-task
+        # state corruption. If nidaq is unavailable, return None.
+        if not _HAVE_DAQ:
+            return None
         try:
-            # create a transient Task for a single read (robust across driver issues)
             with nidaqmx.Task() as t:
                 t.di_channels.add_di_chan(self.cfg.input_trigger)
-                val = t.read()
-                return int(bool(val))
+                val = int(bool(t.read()))
+                if self.cfg.debug:
+                    self.log.emit(f"[DEBUG] _read_trigger -> {val}")
+                return val
         except Exception as e:
-            # Log the read failure and attempt to preserve continuity by returning the last known value
-            try:
-                self.error.emit(f"NI-DAQ read failed (ephemeral task): {e}")
-            except Exception:
-                pass
-            try:
-                if self._last_trig is not None:
-                    return int(self._last_trig)
-            except Exception:
-                pass
-            # Fallback safe default: 1 (so a subsequent falling edge will be detected)
-            return 1
-
-    def _read_trigger_stable(self, attempts: int = 3, delay_s: float = 0.01) -> Optional[int]:
-        """Attempt multiple ephemeral reads and return a stable 0/1 value.
-
-        Tries `attempts` times; if multiple consistent reads are observed returns that value.
-        Otherwise returns the last successful read or None if all attempts failed.
-        """
-        last = None
-        consistent = None
-        for i in range(max(1, int(attempts))):
-            try:
-                with nidaqmx.Task() as t:
-                    t.di_channels.add_di_chan(self.cfg.input_trigger)
-                    v = int(bool(t.read()))
-            except Exception as e:
-                try:
-                    if getattr(self.cfg, 'debug_trig', False):
-                        self.error.emit(f"Trigger stable read attempt {i} failed: {e}")
-                except Exception:
-                    pass
-                v = None
-            if v is not None:
-                if last is None:
-                    last = v
-                elif last == v:
-                    consistent = v
-                    break
-            try:
-                time.sleep(float(delay_s))
-            except Exception:
-                pass
-        # prefer consistent if found, else return last read or None
-        return consistent if consistent is not None else last
+            if self.cfg.debug:
+                self.error.emit(f"[DEBUG] NI-DAQ ephemeral read failed: {e}")
+            else:
+                self.error.emit(f"NI-DAQ read failed (will retry): {e}")
+            return None
 
     # -------- single-sequence state machine (non-blocking) --------
     def _start_single_sequence(self, n: int):
