@@ -220,60 +220,29 @@ class KinesisFireIO(QtCore.QObject):
         else:
             self._set_mode_internal("triggered")
             self._set_shutter_on()
-        # Reset transient arm state so toggling modes doesn't inherit stale requests
-        try:
-            self._fire_requested = False
-            self._burst_count = 0
-            # clear any lingering one-shot active flag so tick isn't blocked when switching modes
-            try:
-                self._one_shot_active = False
-            except Exception:
-                pass
-            # initialize last trigger state to the current input so falling-edge detection is consistent
-            try:
-                val = self._read_trigger()
-                self._last_trig = val
-            except Exception:
-                self._last_trig = None
-            # ensure outputs are in known state (no accidental arming)
-            try:
-                self._write_outputs(0, 0, 0)
-            except Exception:
-                pass
-        except Exception:
-            pass
+        # # Reset transient arm state so toggling modes doesn't inherit stale requests
+        # try:
+        #     self._fire_requested = False
+        #     self._burst_count = 0
+        #     # clear any lingering one-shot active flag so tick isn't blocked when switching modes
+        #     try:
+        #         self._one_shot_active = False
+        #     except Exception:
+        #         pass
+        #     # initialize last trigger state to the current input so falling-edge detection is consistent
+        #     try:
+        #         val = self._read_trigger()
+        #         self._last_trig = val
+        #     except Exception:
+        #         self._last_trig = None
+        #     # ensure outputs are in known state (no accidental arming)
+        #     try:
+        #         self._write_outputs(0, 0, 0)
+        #     except Exception:
+        #         pass
+        # except Exception:
+        #     pass
         self.status.emit(f"Mode set to {mode}")
-        # Emit current shutter state to status panel (try to query device if possible,
-        # otherwise fall back to inferred requested state)
-        try:
-            state_str = None
-            if getattr(self, 'dev', None) is not None:
-                get_state = getattr(self.dev, 'GetOperatingState', None)
-                if callable(get_state):
-                    try:
-                        st = get_state()
-                        # Compare to known enum values when available
-                        try:
-                            if st == SolenoidStatus.OperatingStates.Active:
-                                state_str = 'Active'
-                            elif st == SolenoidStatus.OperatingStates.Inactive:
-                                state_str = 'Inactive'
-                            else:
-                                state_str = str(st)
-                        except Exception:
-                            state_str = str(st)
-                    except Exception:
-                        # device query failed; leave state_str None to infer
-                        state_str = None
-            # if state_str is None:
-            #     # infer based on requested mode: we request shutter ON for continuous/single/burst
-            #     if mode in ('continuous', 'single', 'burst'):
-            #         state_str = 'Active (requested)'
-            #     else:
-            #         state_str = 'Inactive (requested)'
-            self.status.emit(f"Shutter state: {state_str}")
-        except Exception:
-            pass
 
     @QtCore.pyqtSlot(int)
     def set_num_shots(self, n: int):
