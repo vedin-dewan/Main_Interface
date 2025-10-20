@@ -158,7 +158,7 @@ class KinesisFireIO(QtCore.QObject):
 
         # Poll timer (runs in this worker thread)
         self.timer = QtCore.QTimer(self)
-        self.timer.setInterval(int(self.cfg.poll_period_s * 1000/2))
+        self.timer.setInterval(int(self.cfg.poll_period_s * 1000))
         self.timer.timeout.connect(self._tick)
         self.timer.start()
         self.status.emit(f"Ready (mode: {self._mode}, serial: {self.serial or 'n/a'})")
@@ -285,6 +285,8 @@ class KinesisFireIO(QtCore.QObject):
             return
         try:
             self.dev.SetOperatingState(SolenoidStatus.OperatingStates.Active)
+            state = self.dev.GetOperatingState()  # dummy read to ensure command sent
+            self.status.emit(f"Shutter {state}")
         except Exception as e:
             self.error.emit(f"Kinesis SetOperatingState(Active) failed: {e}")
 
