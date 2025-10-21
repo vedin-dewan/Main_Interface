@@ -318,13 +318,48 @@ class SavingPanel(QtWidgets.QGroupBox):
 
     def set_alignment_pg_light_state(self, on: bool):
         try:
-            self.alignment_pg_light.set_on(bool(on))
+            # on: True -> green; False -> red
+            if bool(on):
+                try:
+                    self.alignment_pg_light.set_off_color(self.alignment_pg_light._color_off)
+                except Exception:
+                    pass
+                self.alignment_pg_light.set_on_color("#11c466")
+                self.alignment_pg_light.set_on(True)
+            else:
+                self.alignment_pg_light.set_on_color("#cc2f2f")
+                self.alignment_pg_light.set_on(True)
         except Exception:
             pass
 
     def set_alignment_hene_light_state(self, on: bool):
         try:
-            self.alignment_hene_light.set_on(bool(on))
+            if bool(on):
+                try:
+                    self.alignment_hene_light.set_off_color(self.alignment_hene_light._color_off)
+                except Exception:
+                    pass
+                self.alignment_hene_light.set_on_color("#11c466")
+                self.alignment_hene_light.set_on(True)
+            else:
+                self.alignment_hene_light.set_on_color("#cc2f2f")
+                self.alignment_hene_light.set_on(True)
+        except Exception:
+            pass
+
+    def set_alignment_pg_moving(self):
+        try:
+            # set to yellow and mark 'on' state visually (glow)
+            self.alignment_pg_light.set_on_color("#e0c22a")
+            # ensure it's shown as on
+            self.alignment_pg_light.set_on(True)
+        except Exception:
+            pass
+
+    def set_alignment_hene_moving(self):
+        try:
+            self.alignment_hene_light.set_on_color("#e0c22a")
+            self.alignment_hene_light.set_on(True)
         except Exception:
             pass
     # legacy single-light API removed; use set_alignment_pg_light_state / set_alignment_hene_light_state

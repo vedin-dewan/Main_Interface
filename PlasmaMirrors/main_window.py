@@ -1369,6 +1369,25 @@ class MainWindow(QtWidgets.QMainWindow):
         if 1 <= address <= len(self.part1.rows):
             row = self.part1.rows[address - 1]
             row.light_green.set_on(is_moving)
+        # If this address corresponds to the PG or HeNe configured addresses, set their lights to moving (yellow)
+        try:
+            if is_moving:
+                # check PG mapping
+                if int(address) in getattr(self, '_alignment_pg_onpos', {}):
+                    try:
+                        if getattr(self, 'overall_controls', None) is not None:
+                            self.overall_controls.set_alignment_pg_moving()
+                    except Exception:
+                        pass
+                # check HeNe mapping
+                if int(address) in getattr(self, '_alignment_hene_onpos', {}):
+                    try:
+                        if getattr(self, 'overall_controls', None) is not None:
+                            self.overall_controls.set_alignment_hene_moving()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         # If this address corresponds to any PM SD row, disable its bypass button while moving
         try:
             if hasattr(self, 'pm_panel') and self.pm_panel is not None:

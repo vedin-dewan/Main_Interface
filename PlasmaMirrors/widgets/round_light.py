@@ -24,6 +24,22 @@ class RoundLight(QtWidgets.QWidget):
         self._on = bool(value)
         self.update()
 
+    def set_on_color(self, color: str) -> None:
+        """Set the color used when the light is ON. Color should be a CSS hex string like '#rrggbb'."""
+        try:
+            self._color_on = color
+            self.update()
+        except Exception:
+            pass
+
+    def set_off_color(self, color: str) -> None:
+        """Set the color used when the light is OFF."""
+        try:
+            self._color_off = color
+            self.update()
+        except Exception:
+            pass
+
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
