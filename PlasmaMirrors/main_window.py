@@ -725,6 +725,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
             #Burst: forward to worker fire() which arms burst behavior
             if mode == 'burst':
+                # If a burst/save is already active or post-processing pending, queue this request
+                if getattr(self, '_burst_save_active', False) or getattr(self, '_info_write_pending', False) or getattr(self, '_per_shot_active', False):
+                    try:
+                        self._queued_fire_request = True
+                        self.status_panel.append_line('Burst already active; queued next burst to start after post-processing')
+                        # start watchdog timer to monitor finishing conditions (if not already started)
+                        try:
+                            if getattr(self, '_queued_check_timer', None) is None:
+                                t = QtCore.QTimer(self)
+                                t.setInterval(250)
+                                t.timeout.connect(self._check_and_start_queued_run)
+                                t.setSingleShot(False)
+                                self._queued_check_timer = t
+                                t.start()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    return
+
                 # queue the fire call on the worker
                 try:
                     QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire', QtCore.Qt.ConnectionType.QueuedConnection)
@@ -766,19 +786,8 @@ class MainWindow(QtWidgets.QMainWindow):
                             current_shot = int(self.fire_panel.disp_counter.value())
                         except Exception:
                             current_shot = None
+                        # start burst save (runs in background worker if available)
                         self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s, burst_index=current_shot)
-                        # after successful burst save and renames, increment the displayed shot counter by 1
-                        try:
-                            if hasattr(self, 'fire_panel') and getattr(self.fire_panel, 'disp_counter', None) is not None:
-                                self.fire_panel.disp_counter.setValue(int(self.fire_panel.disp_counter.value()) + 1)
-                                # persist updated counter after successful burst save
-                                try:
-                                    if hasattr(self, '_save_shot_counter'):
-                                        self._save_shot_counter()
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
                     except Exception as e:
                         try: self.status_panel.append_line(f'Burst save failed: {e}')
                         except Exception: pass
@@ -1143,6 +1152,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
             worker.moveToThread(t)
 
+            # Mark burst active and disable Fire button while worker runs
+            try:
+                self._burst_save_active = True
+                self._set_fire_button_enabled(False)
+            except Exception:
+                pass
+
             # forward worker log messages to status panel in UI thread
             try:
                 worker.log.connect(getattr(self.status_panel, 'append_line', lambda m: None))
@@ -1400,6 +1416,33 @@ class MainWindow(QtWidgets.QMainWindow):
                         pass
             except Exception:
                 pass
+            # If this info write was for a burst, clear burst-active and increment shot counter
+            if isinstance(payload, dict) and payload.get('burst_shots', None) is not None:
+                try:
+                    # clear active flag
+                    self._burst_save_active = False
+                except Exception:
+                    pass
+                try:
+                    # increment displayed shot counter once for the completed burst
+                    if hasattr(self, 'fire_panel') and getattr(self.fire_panel, 'disp_counter', None) is not None:
+                        self.fire_panel.disp_counter.setValue(int(self.fire_panel.disp_counter.value()) + 1)
+                        try:
+                            if getattr(self, '_save_shot_counter', None) is not None:
+                                self._save_shot_counter()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    # re-enable the fire button unless other post-processing prevents it
+                    if not getattr(self, '_info_write_pending', False) and not getattr(self, '_pending_auto_addresses', set()):
+                        try:
+                            self._set_fire_button_enabled(True)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
         except Exception:
             pass
 
