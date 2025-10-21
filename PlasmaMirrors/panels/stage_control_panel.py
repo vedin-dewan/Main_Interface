@@ -540,61 +540,34 @@ class StageControlPanel(QtWidgets.QWidget):
         dlg_buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Save | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         dlg_layout.addWidget(dlg_buttons)
 
-        # selection state for Select buttons (remember previous selection)
-        prev_btn = {'btn': None}
+        # Configure a visible selection style for the table and make Select toggle selection
+        try:
+            # prominent light-blue selection for rows
+            table.setStyleSheet(
+                "QTableWidget::item:selected{ background-color: #3399ff; color: white; }"
+            )
+        except Exception:
+            pass
+
         def on_select_row(row_idx: int, btn: QtWidgets.QPushButton):
-            """Toggle selection for a row: select and color the button green, or
-            deselect if the same button is clicked again. Restore original
-            button style from property 'orig_style' when deselecting.
+            """Toggle selection for a row: select the row to show highlight, or
+            clear selection to remove it. The Select button itself is not recolored.
             """
             try:
-                # If clicking the already-selected button -> deselect
-                if prev_btn['btn'] is btn:
-                    try:
-                        table.clearSelection()
-                    except Exception:
-                        pass
-                    try:
-                        orig = btn.property('orig_style') if btn.property('orig_style') is not None else ''
-                        btn.setStyleSheet(orig)
-                    except Exception:
-                        pass
-                    prev_btn['btn'] = None
+                # if already selected -> deselect
+                rows = table.selectionModel().selectedRows()
+                if rows and rows[0].row() == row_idx:
+                    table.clearSelection()
                     return
             except Exception:
                 pass
-
-            # Otherwise select this row and update styles
+            # otherwise select the row
             try:
                 table.selectRow(row_idx)
             except Exception:
                 pass
-            try:
-                if prev_btn['btn'] is not None and prev_btn['btn'] is not btn:
-                    try:
-                        prev_orig = prev_btn['btn'].property('orig_style') if prev_btn['btn'].property('orig_style') is not None else ''
-                        prev_btn['btn'].setStyleSheet(prev_orig)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            try:
-                btn.setStyleSheet('background-color: #4CAF50; color: white;')
-                prev_btn['btn'] = btn
-            except Exception:
-                pass
 
         def load_preset_to_table(preset_name: str):
-            # reset previous selection state when loading a new preset
-            try:
-                if prev_btn['btn'] is not None:
-                    try:
-                        prev_btn['btn'].setStyleSheet('')
-                    except Exception:
-                        pass
-                    prev_btn['btn'] = None
-            except Exception:
-                pass
             table.setRowCount(0)
             payload = data.get(preset_name, {})
             stages = payload.get('stages', []) or []
@@ -645,10 +618,6 @@ class StageControlPanel(QtWidgets.QWidget):
                 aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0)
                 sel_btn = QtWidgets.QPushButton("Select")
                 sel_btn.setProperty('row_index', r)
-                try:
-                    sel_btn.setProperty('orig_style', sel_btn.styleSheet())
-                except Exception:
-                    sel_btn.setProperty('orig_style', '')
                 sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b))
                 ah.addWidget(sel_btn)
                 aw.setLayout(ah)
@@ -672,70 +641,16 @@ class StageControlPanel(QtWidgets.QWidget):
             pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0); pos.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 2, pos)
             ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999); ordw.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 3, ordw)
             prem_le = QtWidgets.QLineEdit(''); prem_le.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 4, prem_le)
-            aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0)
-            sel_btn = QtWidgets.QPushButton('Select')
-            sel_btn.setProperty('row_index', r)
-            try:
-                sel_btn.setProperty('orig_style', sel_btn.styleSheet())
-            except Exception:
-                sel_btn.setProperty('orig_style', '')
-            sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b))
-            ah.addWidget(sel_btn); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
+            aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0); sel_btn = QtWidgets.QPushButton('Select'); sel_btn.setProperty('row_index', r); sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b)); ah.addWidget(sel_btn); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
 
         def remove_selected():
             sel = table.selectionModel().selectedRows()
             rows = sorted([s.row() for s in sel], reverse=True)
             for rr in rows:
                 table.removeRow(rr)
-            # clear previous select button if it referred to a removed row
-            try:
-                if prev_btn['btn'] is not None:
-                    try:
-                        prev_btn['btn'].setStyleSheet('')
-                    except Exception:
-                        pass
-                    prev_btn['btn'] = None
-            except Exception:
-                pass
 
         btn_add.clicked.connect(add_stage)
         btn_remove.clicked.connect(remove_selected)
-
-        # Keep button color in sync with row selection changes (e.g. table row clicked)
-        def _on_table_selection_changed(selected, deselected):
-            # If no rows selected, clear prev button
-            rows = table.selectionModel().selectedRows()
-            if not rows:
-                try:
-                    if prev_btn['btn'] is not None:
-                        prev_btn['btn'].setStyleSheet('')
-                except Exception:
-                    pass
-                prev_btn['btn'] = None
-                return
-            # If a row is selected, find its Select button and style it
-            r = rows[0].row()
-            try:
-                cell = table.cellWidget(r, 5)
-                if cell:
-                    btns = cell.findChildren(QtWidgets.QPushButton)
-                    if btns:
-                        btn = btns[0]
-                        if prev_btn['btn'] is not btn:
-                            try:
-                                if prev_btn['btn'] is not None:
-                                    prev_btn['btn'].setStyleSheet('')
-                            except Exception:
-                                pass
-                            try:
-                                btn.setStyleSheet('background-color: #4CAF50; color: white;')
-                                prev_btn['btn'] = btn
-                            except Exception:
-                                pass
-            except Exception:
-                pass
-
-        table.selectionModel().selectionChanged.connect(_on_table_selection_changed)
 
         def on_save():
             # Build updated payload for the current preset
