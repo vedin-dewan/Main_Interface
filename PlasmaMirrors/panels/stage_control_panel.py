@@ -543,6 +543,26 @@ class StageControlPanel(QtWidgets.QWidget):
         # selection state for Select buttons (remember previous selection)
         prev_btn = {'btn': None}
         def on_select_row(row_idx: int, btn: QtWidgets.QPushButton):
+            """Toggle selection for a row: select and color the button green, or
+            deselect if the same button is clicked again.
+            """
+            try:
+                # If clicking the already-selected button -> deselect
+                if prev_btn['btn'] is btn:
+                    try:
+                        table.clearSelection()
+                    except Exception:
+                        pass
+                    try:
+                        btn.setStyleSheet('')
+                    except Exception:
+                        pass
+                    prev_btn['btn'] = None
+                    return
+            except Exception:
+                pass
+
+            # Otherwise select this row and update styles
             try:
                 table.selectRow(row_idx)
             except Exception:
@@ -567,11 +587,11 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.insertRow(r)
                 # Name
                 name_item = QtWidgets.QLineEdit(str(st.get('name', '')))
-                name_item.setStyleSheet('color: #000000;')
+                name_item.setStyleSheet('color: #ffffff;')
                 table.setCellWidget(r, 0, name_item)
                 # Stage Num
                 sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999)
-                sn.setStyleSheet('color: #000000;')
+                sn.setStyleSheet('color: #ffffff;')
                 try:
                     if st.get('stage_num') is not None:
                         sn.setValue(int(st.get('stage_num')))
@@ -580,7 +600,7 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.setCellWidget(r, 1, sn)
                 # Position
                 pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0)
-                pos.setStyleSheet('color: #000000;')
+                pos.setStyleSheet('color: #ffffff;')
                 try:
                     if st.get('position') is not None:
                         pos.setValue(float(st.get('position')))
@@ -589,7 +609,7 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.setCellWidget(r, 2, pos)
                 # Order
                 ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999)
-                ordw.setStyleSheet('color: #000000;')
+                ordw.setStyleSheet('color: #ffffff;')
                 try:
                     if st.get('order') is not None:
                         ordw.setValue(int(st.get('order')))
@@ -598,7 +618,7 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.setCellWidget(r, 3, ordw)
                 # Premoves (comma separated)
                 prem = QtWidgets.QLineEdit()
-                prem.setStyleSheet('color: #000000;')
+                prem.setStyleSheet('color: #ffffff;')
                 premoves = st.get('premoves', [])
                 if isinstance(premoves, (list, tuple)):
                     prem.setText(','.join([str(x) for x in premoves]))
@@ -627,11 +647,11 @@ class StageControlPanel(QtWidgets.QWidget):
         def add_stage():
             r = table.rowCount()
             table.insertRow(r)
-            le = QtWidgets.QLineEdit('New Stage'); le.setStyleSheet('color: #000000;'); table.setCellWidget(r, 0, le)
-            sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999); sn.setStyleSheet('color: #000000;'); table.setCellWidget(r, 1, sn)
-            pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0); pos.setStyleSheet('color: #000000;'); table.setCellWidget(r, 2, pos)
-            ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999); ordw.setStyleSheet('color: #000000;'); table.setCellWidget(r, 3, ordw)
-            prem_le = QtWidgets.QLineEdit(''); prem_le.setStyleSheet('color: #000000;'); table.setCellWidget(r, 4, prem_le)
+            le = QtWidgets.QLineEdit('New Stage'); le.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 0, le)
+            sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999); sn.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 1, sn)
+            pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0); pos.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 2, pos)
+            ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999); ordw.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 3, ordw)
+            prem_le = QtWidgets.QLineEdit(''); prem_le.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 4, prem_le)
             aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0); sel_btn = QtWidgets.QPushButton('Select'); sel_btn.setProperty('row_index', r); sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b)); ah.addWidget(sel_btn); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
 
         def remove_selected():
