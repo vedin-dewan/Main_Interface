@@ -14,6 +14,7 @@ class StageControlPanel(QtWidgets.QWidget):
     request_set_ubound = QtCore.pyqtSignal(int, float)
     request_move_to_saved = QtCore.pyqtSignal(str)
     request_stop_all = QtCore.pyqtSignal()
+    request_scan = QtCore.pyqtSignal(dict)
 
     def __init__(self, rows: list[MotorRow]):
         super().__init__()
@@ -192,6 +193,7 @@ class StageControlPanel(QtWidgets.QWidget):
         # Clicking Home All should trigger the Move-to-Saved flow for the preset "HOME ALL"
         self.btn_home_all.clicked.connect(lambda: self.request_move_to_saved.emit("HOME ALL"))
         self.btn_scan_stage = QtWidgets.QPushButton("Scan Stage")
+        self.btn_scan_stage.clicked.connect(self._open_scan_dialog)
         self.btn_stop_all   = QtWidgets.QPushButton("Stop All")
         # Clicking Stop All should request stopping of all stages and cancel queued moves
         self.btn_stop_all.clicked.connect(lambda: self.request_stop_all.emit())
@@ -778,6 +780,52 @@ class StageControlPanel(QtWidgets.QWidget):
         dlg_buttons.rejected.connect(dialog.reject)
 
         dialog.exec()
+
+    def _open_scan_dialog(self):
+        """Open a dialog to configure a stage scan: select stage, min, max, step."""
+        d = QtWidgets.QDialog(self)
+        d.setWindowTitle("Scan Stage")
+        layout = QtWidgets.QFormLayout(d)
+
+        # Stage selector
+        sel = QtWidgets.QComboBox()
+        for i, r in enumerate(self.rows, start=1):
+            sel.addItem(r.info.long, userData=i)
+        layout.addRow("Stage:", sel)
+
+        # Position fields
+        min_sb = QtWidgets.QDoubleSpinBox(); min_sb.setDecimals(6); min_sb.setRange(-99999.0, 99999.0); min_sb.setValue(0.0)
+        max_sb = QtWidgets.QDoubleSpinBox(); max_sb.setDecimals(6); max_sb.setRange(-99999.0, 99999.0); max_sb.setValue(1.0)
+        step_sb = QtWidgets.QDoubleSpinBox(); step_sb.setDecimals(6); step_sb.setRange(1e-6, 99999.0); step_sb.setValue(0.1)
+        layout.addRow("Min position:", min_sb)
+        layout.addRow("Max position:", max_sb)
+        layout.addRow("Step size:", step_sb)
+
+        # Buttons
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_scan = QtWidgets.QPushButton("Scan")
+        btn_cancel = QtWidgets.QPushButton("Cancel")
+        btn_row.addWidget(btn_scan); btn_row.addWidget(btn_cancel)
+        layout.addRow(btn_row)
+
+        def on_cancel():
+            d.reject()
+
+        def on_scan():
+            try:
+                addr = int(sel.currentData())
+                mn = float(min_sb.value())
+                mx = float(max_sb.value())
+                stp = float(step_sb.value())
+                params = { 'address': addr, 'min': mn, 'max': mx, 'step': stp }
+                self.request_scan.emit(params)
+            except Exception:
+                pass
+            d.accept()
+
+        btn_cancel.clicked.connect(on_cancel)
+        btn_scan.clicked.connect(on_scan)
+        d.exec()
 
     def _write_saved_positions_log(self, log_path: str, data: dict):
         """(Legacy) Full-write human-readable log. Kept as a fallback.

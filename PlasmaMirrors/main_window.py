@@ -143,6 +143,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pm_panel= PMPanel()
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
+        # connect scan request from stage control to handler
+        try:
+            self.part2.request_scan.connect(self._on_scan_requested)
+        except Exception:
+            pass
         self.status_panel = StatusPanel()
         self.placeholder_panel = PlaceholderPanel("Placeholder")
         # track background write + auto-move state so we can control Fire button
@@ -839,6 +844,221 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         except Exception:
             pass
+
+    def _move_and_wait(self, address: int, target: float, unit: str, timeout_ms: int = 30_000) -> bool:
+        """Request an absolute move and block (without freezing UI) until moved event for address arrives or timeout. Returns True on success."""
+        loop = QtCore.QEventLoop()
+        success = {'done': False}
+
+        def _on_moved(addr, final_pos):
+            try:
+                if int(addr) == int(address):
+                    success['done'] = True
+                    try:
+                        loop.quit()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # connect one-shot
+        try:
+            self.stage.moved.connect(_on_moved)
+        except Exception:
+            pass
+
+        try:
+            # request move
+            self.req_abs.emit(int(address), float(target), unit)
+        except Exception:
+            pass
+
+        # safety timeout
+        timer = QtCore.QTimer(self)
+        timer.setSingleShot(True)
+        def _on_timeout():
+            try:
+                loop.quit()
+            except Exception:
+                pass
+        timer.timeout.connect(_on_timeout)
+        timer.start(timeout_ms)
+
+        # run nested loop until moved/timeout
+        try:
+            loop.exec()
+        except Exception:
+            pass
+
+        try:
+            timer.stop()
+        except Exception:
+            pass
+        try:
+            self.stage.moved.disconnect(_on_moved)
+        except Exception:
+            pass
+        return bool(success['done'])
+
+    def _wait_for_sequence_finish(self, poll_interval_ms: int = 200):
+        """Return when per-shot sequence and post-processing (info writes & PM autos) complete."""
+        loop = QtCore.QEventLoop()
+
+        def _check():
+            try:
+                per_active = getattr(self, '_per_shot_active', False)
+                info_pending = getattr(self, '_info_write_pending', False)
+                pending_autos = bool(getattr(self, '_pending_auto_addresses', set()))
+                if (not per_active) and (not info_pending) and (not pending_autos):
+                    try:
+                        loop.quit()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        timer = QtCore.QTimer(self)
+        timer.setInterval(poll_interval_ms)
+        timer.timeout.connect(_check)
+        timer.start()
+
+        # run until _check quits
+        try:
+            loop.exec()
+        except Exception:
+            pass
+        try:
+            timer.stop()
+        except Exception:
+            pass
+
+    def _on_scan_requested(self, params: dict):
+        """Handle a scan request from the StageControlPanel.
+
+        params: { address, min, max, step }
+        """
+        try:
+            address = int(params.get('address'))
+            mn = float(params.get('min'))
+            mx = float(params.get('max'))
+            step = float(params.get('step'))
+        except Exception:
+            return
+
+        # Validate step
+        if step <= 0:
+            try: self.status_panel.append_line('Scan aborted: step must be > 0')
+            except Exception: pass
+            return
+
+        # Determine unit for address
+        try:
+            unit = getattr(self.part1.rows[address-1].info, 'unit', 'mm')
+        except Exception:
+            unit = 'mm'
+
+        # Compute scan positions: start at min, include until next increment would exceed max within tolerance 1e-4
+        positions = []
+        p = mn
+        tol = 1e-4
+        while True:
+            if p > mx + tol:
+                break
+            positions.append(p)
+            next_p = p + step
+            if next_p > mx + tol:
+                break
+            p = next_p
+
+        # Run scan sequentially but without blocking the UI (use QTimer singleShot chain)
+        idx = {'i': 0}
+
+        def _do_next():
+            i = idx['i']
+            if i >= len(positions):
+                try: self.status_panel.append_line('Scan complete')
+                except Exception: pass
+                return
+            target = positions[i]
+            try: self.status_panel.append_line(f"Scan: moving Addr {address} → {target:.6f} {unit}")
+            except Exception: pass
+
+            # Move and when moved schedule post-auto buffer wait then fire
+            def _after_move(success: bool = True):
+                try:
+                    # wait post-auto buffer
+                    try:
+                        buffer_ms = int(self.fire_panel.spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 500
+                    except Exception:
+                        buffer_ms = 500
+                    QtCore.QTimer.singleShot(buffer_ms, _do_fire)
+                except Exception:
+                    _do_fire()
+
+            def _do_fire():
+                try:
+                    # Ensure single-shot mode
+                    try:
+                        if getattr(self.fire_panel, 'rb_single', None):
+                            self.fire_panel.rb_single.setChecked(True)
+                    except Exception:
+                        pass
+                    # Trigger fire click (this will start per-shot sequence infrastructure)
+                    try:
+                        QtCore.QMetaObject.invokeMethod(self, '_on_fire_clicked', QtCore.Qt.ConnectionType.QueuedConnection)
+                    except Exception:
+                        try:
+                            QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                        except Exception:
+                            pass
+                    # Wait until sequence and post-processing finish
+                    QtCore.QTimer.singleShot(50, lambda: QtCore.QMetaObject.invokeMethod(self, '_poll_fire_completion', QtCore.Qt.ConnectionType.QueuedConnection))
+                except Exception:
+                    pass
+
+            # Connect moved waiter using a single-shot local connection and then call _after_move when done
+            def _moved_quit_loop(addr, final_pos):
+                try:
+                    if int(addr) == int(address):
+                        try:
+                            self.stage.moved.disconnect(_moved_quit_loop)
+                        except Exception:
+                            pass
+                        _after_move(True)
+                except Exception:
+                    pass
+
+            try:
+                self.stage.moved.connect(_moved_quit_loop)
+            except Exception:
+                # If we can't connect, still try to fire after a short wait
+                QtCore.QTimer.singleShot(200, _after_move)
+
+            # request the move
+            try:
+                self.req_abs.emit(address, float(target), unit)
+            except Exception:
+                QtCore.QTimer.singleShot(50, _after_move)
+
+        # helper to poll for fire completion and continue to next position
+        def _poll_fire_completion():
+            try:
+                per_active = getattr(self, '_per_shot_active', False)
+                info_pending = getattr(self, '_info_write_pending', False)
+                pending_autos = bool(getattr(self, '_pending_auto_addresses', set()))
+                if per_active or info_pending or pending_autos:
+                    # not finished yet; poll again
+                    QtCore.QTimer.singleShot(200, lambda: QtCore.QMetaObject.invokeMethod(self, '_poll_fire_completion', QtCore.Qt.ConnectionType.QueuedConnection))
+                    return
+                # finished this shot; move to next
+                idx['i'] += 1
+                QtCore.QTimer.singleShot(50, _do_next)
+            except Exception:
+                idx['i'] += 1
+                QtCore.QTimer.singleShot(50, _do_next)
+
+        # start
+        QtCore.QTimer.singleShot(50, _do_next)
 
     @QtCore.pyqtSlot(int, int)
     def _on_shots_progress(self, current: int, total: int):
