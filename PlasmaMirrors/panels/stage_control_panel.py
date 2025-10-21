@@ -183,6 +183,9 @@ class StageControlPanel(QtWidgets.QWidget):
         row1.addWidget(self.btn_save_current)
         row1.addWidget(self.btn_move_to_saved)
 
+        # connect configure button to open editor
+        self.btn_configure.clicked.connect(self._open_configure_dialog)
+
         # Buttons row 2 (Home All | Scan Stage | Stop All)
         row2 = QtWidgets.QHBoxLayout()
         self.btn_home_all  = QtWidgets.QPushButton("Home All")
@@ -474,6 +477,227 @@ class StageControlPanel(QtWidgets.QWidget):
         self.action_performed.emit(
             f'Updated "{preset}" at {now_iso}: {updated_count} stage(s) updated; order preserved.'
         )
+
+    # ------------------ Configure dialog ------------------
+    def _open_configure_dialog(self):
+        """Open a modal dialog to edit the Saved_positions.json presets.
+
+        The dialog allows selecting a preset, editing its stages (name, stage_num,
+        position, order), adding/removing/reordering stages, and editing premoves
+        (comma-separated positions). On Save the JSON file is updated and the
+        UI refreshed.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        file_path = os.path.join(base_dir, "parameters/Saved_positions.json")
+
+        # Load data
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            self.action_performed.emit(f"Failed to read saved positions: {e}")
+            return
+
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Configure Saved Positions")
+        dialog.setModal(True)
+        dlg_layout = QtWidgets.QVBoxLayout(dialog)
+
+        # Preset selector
+        preset_selector = QtWidgets.QComboBox()
+        presets = list(data.keys())
+        preset_selector.addItems(presets)
+        dlg_layout.addWidget(preset_selector)
+
+        # Table for stages
+        table = QtWidgets.QTableWidget(0, 6)
+        table.setHorizontalHeaderLabels(["Name", "Stage Num", "Position", "Order", "Premoves", "Actions"])
+        table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        dlg_layout.addWidget(table)
+
+        # Helper buttons: add, remove, move up, move down
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_add = QtWidgets.QPushButton("Add Stage")
+        btn_remove = QtWidgets.QPushButton("Remove Selected")
+        btn_up = QtWidgets.QPushButton("Move Up")
+        btn_down = QtWidgets.QPushButton("Move Down")
+        btn_row.addWidget(btn_add); btn_row.addWidget(btn_remove); btn_row.addWidget(btn_up); btn_row.addWidget(btn_down)
+        dlg_layout.addLayout(btn_row)
+
+        # Dialog buttons
+        dlg_buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Save | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        dlg_layout.addWidget(dlg_buttons)
+
+        def load_preset_to_table(preset_name: str):
+            table.setRowCount(0)
+            payload = data.get(preset_name, {})
+            stages = payload.get('stages', []) or []
+            for st in stages:
+                r = table.rowCount()
+                table.insertRow(r)
+                # Name
+                name_item = QtWidgets.QLineEdit(str(st.get('name', '')))
+                table.setCellWidget(r, 0, name_item)
+                # Stage Num
+                sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999)
+                try:
+                    if st.get('stage_num') is not None:
+                        sn.setValue(int(st.get('stage_num')))
+                except Exception:
+                    pass
+                table.setCellWidget(r, 1, sn)
+                # Position
+                pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0)
+                try:
+                    if st.get('position') is not None:
+                        pos.setValue(float(st.get('position')))
+                except Exception:
+                    pass
+                table.setCellWidget(r, 2, pos)
+                # Order
+                ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999)
+                try:
+                    if st.get('order') is not None:
+                        ordw.setValue(int(st.get('order')))
+                except Exception:
+                    pass
+                table.setCellWidget(r, 3, ordw)
+                # Premoves (comma separated)
+                prem = QtWidgets.QLineEdit()
+                premoves = st.get('premoves', [])
+                if isinstance(premoves, (list, tuple)):
+                    prem.setText(','.join([str(x) for x in premoves]))
+                else:
+                    prem.setText(str(premoves))
+                table.setCellWidget(r, 4, prem)
+                # Actions (placeholder)
+                aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0)
+                sel_btn = QtWidgets.QPushButton("Select")
+                ah.addWidget(sel_btn)
+                aw.setLayout(ah)
+                table.setCellWidget(r, 5, aw)
+
+        # initial load
+        if presets:
+            load_preset_to_table(presets[0])
+
+        def on_preset_changed(i):
+            name = preset_selector.itemText(i)
+            load_preset_to_table(name)
+
+        preset_selector.currentIndexChanged.connect(on_preset_changed)
+
+        def add_stage():
+            r = table.rowCount()
+            table.insertRow(r)
+            table.setCellWidget(r, 0, QtWidgets.QLineEdit('New Stage'))
+            sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999); table.setCellWidget(r, 1, sn)
+            pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0); table.setCellWidget(r, 2, pos)
+            ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999); table.setCellWidget(r, 3, ordw)
+            table.setCellWidget(r, 4, QtWidgets.QLineEdit(''))
+            aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
+
+        def remove_selected():
+            sel = table.selectionModel().selectedRows()
+            rows = sorted([s.row() for s in sel], reverse=True)
+            for rr in rows:
+                table.removeRow(rr)
+
+        def move_selected_up():
+            sel = table.selectionModel().selectedRows()
+            if not sel:
+                return
+            r = sel[0].row()
+            if r <= 0:
+                return
+            # swap row widgets with previous
+            for c in range(table.columnCount()):
+                w1 = table.cellWidget(r, c)
+                w0 = table.cellWidget(r-1, c)
+                table.removeCellWidget(r, c); table.removeCellWidget(r-1, c)
+                table.setCellWidget(r-1, c, w1); table.setCellWidget(r, c, w0)
+            table.selectRow(r-1)
+
+        def move_selected_down():
+            sel = table.selectionModel().selectedRows()
+            if not sel:
+                return
+            r = sel[0].row()
+            if r >= table.rowCount()-1:
+                return
+            for c in range(table.columnCount()):
+                w1 = table.cellWidget(r, c)
+                w2 = table.cellWidget(r+1, c)
+                table.removeCellWidget(r, c); table.removeCellWidget(r+1, c)
+                table.setCellWidget(r, c, w2); table.setCellWidget(r+1, c, w1)
+            table.selectRow(r+1)
+
+        btn_add.clicked.connect(add_stage)
+        btn_remove.clicked.connect(remove_selected)
+        btn_up.clicked.connect(move_selected_up)
+        btn_down.clicked.connect(move_selected_down)
+
+        def on_save():
+            # Build updated payload for the current preset
+            pname = preset_selector.currentText()
+            payload = data.get(pname, {})
+            stages = []
+            for r in range(table.rowCount()):
+                try:
+                    name = table.cellWidget(r, 0).text()
+                    stage_num = int(table.cellWidget(r, 1).value()) if table.cellWidget(r,1) else None
+                    position = float(table.cellWidget(r, 2).value()) if table.cellWidget(r,2) else None
+                    orderv = int(table.cellWidget(r, 3).value()) if table.cellWidget(r,3) else None
+                    prem_text = table.cellWidget(r,4).text() if table.cellWidget(r,4) else ''
+                    premoves = []
+                    if prem_text:
+                        for p in prem_text.split(','):
+                            try:
+                                premoves.append(float(p.strip()))
+                            except Exception:
+                                pass
+                    st = {
+                        'name': name,
+                        'stage_num': stage_num,
+                        'position': position,
+                        'order': orderv,
+                        'premoves': premoves,
+                    }
+                    stages.append(st)
+                except Exception:
+                    pass
+
+            # update payload and timestamp
+            payload['stages'] = stages
+            now_iso = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            payload['last_saved_time'] = now_iso
+            data[pname] = payload
+
+            # write back to file
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2)
+            except Exception as e:
+                self.action_performed.emit(f"Failed to write saved positions: {e}")
+                return
+
+            # refresh UI
+            try:
+                self.load_saved_positions()
+            except Exception:
+                pass
+            self.action_performed.emit(f"Saved preset {pname} at {now_iso}")
+            dialog.accept()
+
+        dlg_buttons.accepted.connect(on_save)
+        dlg_buttons.rejected.connect(dialog.reject)
+
+        dialog.exec()
 
     def _write_saved_positions_log(self, log_path: str, data: dict):
         """(Legacy) Full-write human-readable log. Kept as a fallback.
