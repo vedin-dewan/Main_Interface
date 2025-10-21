@@ -297,11 +297,12 @@ def save_burst_files(
     candidates = {i: [] for i in range(len(toks_l))}
     last_size = {}
     stable_since = {}
-    stable_found = {i: [] for i in range(len(toks_l))}
 
     moved = []
+    # tokens for which we've already moved at least one stable file
+    done_tokens = set()
 
-    while time.time() < deadline:
+    while time.time() < deadline and len(done_tokens) < len(toks_l):
         try:
             entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
         except Exception:
@@ -338,17 +339,48 @@ def save_burst_files(
                         if stable_since.get(full) is None:
                             stable_since[full] = now
                         elif (now - stable_since[full]) >= stable_time:
-                            if full not in stable_found.get(i, []):
-                                stable_found.setdefault(i, []).append(full)
-                                try: logger(f"Burst save: file stable for token '{toks[i]}' -> {fname}")
+                            # Move the stable file immediately for this token if we haven't
+                            # already moved a file for this token.
+                            if i in done_tokens:
+                                # already handled this token
+                                continue
+                            try:
+                                # Build a safe label and destination name
+                                counters_j = 0
+                                base, ext = os.path.splitext(os.path.basename(full))
+                                safe_label = ''.join(ch for ch in toks[i] if ch.isalnum() or ch in ('-', '_')) or 'Token'
+                                newname = f"{experiment}_Burst_{safe_label}_{counters_j}{ext}"
+                                dest = os.path.join(burst_dir, newname)
+                                # if destination exists, make unique
+                                if os.path.exists(dest):
+                                    try:
+                                        dest = os.path.join(burst_dir, f"{os.path.splitext(newname)[0]}_dup{ext}")
+                                    except Exception:
+                                        pass
+                                # ensure burst_dir exists
+                                try:
+                                    os.makedirs(burst_dir, exist_ok=True)
+                                except Exception:
+                                    pass
+                                os.replace(full, dest)
+                                try:
+                                    processed_paths.add(dest)
+                                except Exception:
+                                    pass
+                                try: logger(f"Burst saved: {os.path.basename(full)} -> {os.path.join(os.path.basename(burst_dir), os.path.basename(dest))}")
+                                except Exception: pass
+                                moved.append((full, dest))
+                                done_tokens.add(i)
+                            except Exception as e:
+                                try: logger(f"Burst save: failed to move {full}: {e}")
                                 except Exception: pass
                     else:
                         last_size[full] = cur_size
                         stable_since[full] = None
                     break
 
-        any_stable = any(bool(v) for v in stable_found.values())
-        if any_stable and (time.time() + 0.1) >= deadline:
+        # If close to deadline and we've moved at least one file, break to avoid long wait
+        if (time.time() + 0.1) >= deadline:
             break
 
         try:
@@ -356,54 +388,7 @@ def save_burst_files(
         except Exception:
             pass
 
-    # Build matched list: for each token, sort stable files by mtime ascending
-    matched = []
-    for i, files in stable_found.items():
-        if not files:
-            continue
-        files_unique = []
-        seen = set()
-        for f in files:
-            if f not in seen:
-                seen.add(f)
-                try:
-                    m = os.path.getmtime(f)
-                except Exception:
-                    m = 0
-                files_unique.append((f, toks[i], m))
-        files_unique.sort(key=lambda x: x[2] or 0)
-        matched.extend(files_unique)
-
-    if not matched:
+    if not moved:
         try: logger('Burst save: no stable files found matching camera/spectrometer tokens (timed out)')
         except Exception: pass
-        return [], processed_paths, burst_dir
-
-    counters = {}
-    for full, label, m in matched:
-        try:
-            counters.setdefault(label, 0)
-            j = counters[label]
-            counters[label] = j + 1
-            base, ext = os.path.splitext(os.path.basename(full))
-            safe_label = ''.join(ch for ch in label if ch.isalnum() or ch in ('-', '_')) or 'Token'
-            newname = f"{experiment}_Burst_{safe_label}_{j}{ext}"
-            dest = os.path.join(burst_dir, newname)
-            if os.path.exists(dest):
-                try:
-                    dest = os.path.join(burst_dir, f"{os.path.splitext(newname)[0]}_dup{ext}")
-                except Exception:
-                    pass
-            os.replace(full, dest)
-            try:
-                processed_paths.add(dest)
-            except Exception:
-                pass
-            try: logger(f"Burst saved: {os.path.basename(full)} -> {os.path.join(os.path.basename(burst_dir), os.path.basename(dest))}")
-            except Exception: pass
-            moved.append((full, dest))
-        except Exception as e:
-            try: logger(f"Burst save: failed to move {full}: {e}")
-            except Exception: pass
-
     return moved, processed_paths, burst_dir
