@@ -1615,9 +1615,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 pass
                         if not matched:
                             try:
-                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_pg_light_state', None):
-                                    # not at either configured position
-                                    self.overall_controls.set_alignment_pg_light_state(False)
+                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_pg_moving', None):
+                                    # not at either configured position: keep the light showing MOVING (yellow)
+                                    self.overall_controls.set_alignment_pg_moving()
                             except Exception:
                                 pass
                     except Exception:
@@ -1649,8 +1649,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 pass
                         if not matched:
                             try:
-                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_hene_light_state', None):
-                                    self.overall_controls.set_alignment_hene_light_state(False)
+                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_hene_moving', None):
+                                    # not at either configured position: keep the light showing MOVING (yellow)
+                                    self.overall_controls.set_alignment_hene_moving()
                             except Exception:
                                 pass
                     except Exception:
