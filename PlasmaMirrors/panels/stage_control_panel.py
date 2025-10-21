@@ -554,9 +554,13 @@ class StageControlPanel(QtWidgets.QWidget):
                     except Exception:
                         pass
                     try:
-                        btn.setStyleSheet('')
+                        orig = btn.property('orig_style') or ''
+                        btn.setStyleSheet(orig)
                     except Exception:
-                        pass
+                        try:
+                            btn.setStyleSheet('')
+                        except Exception:
+                            pass
                     prev_btn['btn'] = None
                     return
             except Exception:
@@ -569,7 +573,14 @@ class StageControlPanel(QtWidgets.QWidget):
                 pass
             try:
                 if prev_btn['btn'] is not None and prev_btn['btn'] is not btn:
-                    prev_btn['btn'].setStyleSheet('')
+                    try:
+                        orig = prev_btn['btn'].property('orig_style') or ''
+                        prev_btn['btn'].setStyleSheet(orig)
+                    except Exception:
+                        try:
+                            prev_btn['btn'].setStyleSheet('')
+                        except Exception:
+                            pass
             except Exception:
                 pass
             try:
@@ -629,6 +640,11 @@ class StageControlPanel(QtWidgets.QWidget):
                 aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0)
                 sel_btn = QtWidgets.QPushButton("Select")
                 sel_btn.setProperty('row_index', r)
+                # remember original style to restore on deselect
+                try:
+                    sel_btn.setProperty('orig_style', sel_btn.styleSheet())
+                except Exception:
+                    sel_btn.setProperty('orig_style', '')
                 sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b))
                 ah.addWidget(sel_btn)
                 aw.setLayout(ah)
@@ -652,7 +668,15 @@ class StageControlPanel(QtWidgets.QWidget):
             pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0); pos.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 2, pos)
             ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999); ordw.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 3, ordw)
             prem_le = QtWidgets.QLineEdit(''); prem_le.setStyleSheet('color: #ffffff;'); table.setCellWidget(r, 4, prem_le)
-            aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0); sel_btn = QtWidgets.QPushButton('Select'); sel_btn.setProperty('row_index', r); sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b)); ah.addWidget(sel_btn); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
+            aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0)
+            sel_btn = QtWidgets.QPushButton('Select')
+            sel_btn.setProperty('row_index', r)
+            try:
+                sel_btn.setProperty('orig_style', sel_btn.styleSheet())
+            except Exception:
+                sel_btn.setProperty('orig_style', '')
+            sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b))
+            ah.addWidget(sel_btn); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
 
         def remove_selected():
             sel = table.selectionModel().selectedRows()
