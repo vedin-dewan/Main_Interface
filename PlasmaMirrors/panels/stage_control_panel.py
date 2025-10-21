@@ -15,6 +15,7 @@ class StageControlPanel(QtWidgets.QWidget):
     request_move_to_saved = QtCore.pyqtSignal(str)
     request_stop_all = QtCore.pyqtSignal()
     request_scan = QtCore.pyqtSignal(dict)
+    request_stop_scan = QtCore.pyqtSignal()
 
     def __init__(self, rows: list[MotorRow]):
         super().__init__()
@@ -194,11 +195,14 @@ class StageControlPanel(QtWidgets.QWidget):
         self.btn_home_all.clicked.connect(lambda: self.request_move_to_saved.emit("HOME ALL"))
         self.btn_scan_stage = QtWidgets.QPushButton("Scan Stage")
         self.btn_scan_stage.clicked.connect(self._open_scan_dialog)
+        self.btn_stop_scan = QtWidgets.QPushButton("Stop Scan")
+        self.btn_stop_scan.setToolTip("Request stopping an in-progress scan after the current step finishes")
         self.btn_stop_all   = QtWidgets.QPushButton("Stop All")
         # Clicking Stop All should request stopping of all stages and cancel queued moves
         self.btn_stop_all.clicked.connect(lambda: self.request_stop_all.emit())
         row2.addWidget(self.btn_home_all)
         row2.addWidget(self.btn_scan_stage)
+        row2.addWidget(self.btn_stop_scan)
         row2.addWidget(self.btn_stop_all)
 
         # Pack group

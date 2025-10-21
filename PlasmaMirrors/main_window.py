@@ -146,6 +146,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # connect scan request from stage control to handler
         try:
             self.part2.request_scan.connect(self._on_scan_requested)
+            self.part2.request_stop_scan.connect(lambda: setattr(self, '_scan_stop_requested', True))
         except Exception:
             pass
         self.status_panel = StatusPanel()
@@ -972,6 +973,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Run scan sequentially but without blocking the UI (use QTimer singleShot chain)
         idx = {'i': 0}
+        # determine relative step sign: positive if scanning upward, negative if downward
+        try:
+            step_signed = float(step) if float(mx) >= float(mn) else -abs(float(step))
+        except Exception:
+            step_signed = float(step)
 
         def _do_next():
             i = idx['i']
@@ -1005,14 +1011,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         pass
                     # Trigger fire click (this will start per-shot sequence infrastructure)
                     try:
-                        QtCore.QMetaObject.invokeMethod(self, '_on_fire_clicked', QtCore.Qt.ConnectionType.QueuedConnection)
+                        # call the UI-level fire handler on the main thread
+                        QtCore.QTimer.singleShot(0, lambda: self._on_fire_clicked())
                     except Exception:
                         try:
+                            # fallback: ask the fire IO to fire one shot directly
                             QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
                         except Exception:
                             pass
-                    # Wait until sequence and post-processing finish
-                    QtCore.QTimer.singleShot(50, lambda: QtCore.QMetaObject.invokeMethod(self, '_poll_fire_completion', QtCore.Qt.ConnectionType.QueuedConnection))
+                    # Wait until sequence and post-processing finish by polling
+                    QtCore.QTimer.singleShot(50, lambda: _poll_fire_completion())
                 except Exception:
                     pass
 
@@ -1036,7 +1044,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # request the move
             try:
-                self.req_abs.emit(address, float(target), unit)
+                # first iteration: absolute move to min; subsequent iterations: relative move by step_signed
+                if idx['i'] == 0:
+                    self.req_abs.emit(address, float(target), unit)
+                else:
+                    # use relative jog for subsequent steps
+                    try:
+                        self.req_jog.emit(address, float(step_signed), unit)
+                    except Exception:
+                        # fallback to absolute target if relative fails
+                        self.req_abs.emit(address, float(target), unit)
             except Exception:
                 QtCore.QTimer.singleShot(50, _after_move)
 
@@ -1048,9 +1065,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 pending_autos = bool(getattr(self, '_pending_auto_addresses', set()))
                 if per_active or info_pending or pending_autos:
                     # not finished yet; poll again
-                    QtCore.QTimer.singleShot(200, lambda: QtCore.QMetaObject.invokeMethod(self, '_poll_fire_completion', QtCore.Qt.ConnectionType.QueuedConnection))
+                    QtCore.QTimer.singleShot(200, lambda: _poll_fire_completion())
                     return
-                # finished this shot; move to next
+                # finished this shot; check stop flag and either stop or move to next
+                try:
+                    if getattr(self, '_scan_stop_requested', False):
+                        # clear flag and stop scanning after current step finishes
+                        try:
+                            self._scan_stop_requested = False
+                        except Exception:
+                            pass
+                        try: self.status_panel.append_line('Scan stopped by user after current step')
+                        except Exception: pass
+                        return
+                except Exception:
+                    pass
                 idx['i'] += 1
                 QtCore.QTimer.singleShot(50, _do_next)
             except Exception:
