@@ -214,3 +214,196 @@ def rename_shot_files(
             pass
 
     return renamed_pairs, processed_paths
+
+
+def save_burst_files(
+    outdir: str,
+    burst_rel: str,
+    tokens: Iterable[str],
+    experiment: str,
+    timeout_ms: int = 5000,
+    poll_ms: int = 200,
+    stable_s: float = 0.3,
+    burst_index: Optional[int] = None,
+    processed_paths: Optional[Set[str]] = None,
+    match_fn: Optional[Callable[[str, str], bool]] = None,
+    logger: Optional[Callable[[str], None]] = None,
+) -> Tuple[List[Tuple[str, str]], Set[str], str]:
+    """Poll `outdir` for files matching tokens, move them into a Burst_n folder and rename.
+
+    Returns (moved_pairs, processed_paths, burst_dir)
+    moved_pairs: list of (old_full, new_full)
+    processed_paths: updated set of processed paths
+    burst_dir: path to created burst folder (empty string on failure)
+    """
+    if logger is None:
+        logger = default_logger
+    if match_fn is None:
+        match_fn = default_match_fn
+    if processed_paths is None:
+        processed_paths = set()
+
+    if not outdir:
+        logger('Burst save: no output directory configured')
+        return [], processed_paths, ''
+    if burst_rel:
+        base_folder = os.path.join(outdir, burst_rel)
+    else:
+        base_folder = outdir
+
+    try:
+        os.makedirs(base_folder, exist_ok=True)
+    except Exception as e:
+        logger(f'Burst save: failed to create base folder {base_folder}: {e}')
+        return [], processed_paths, ''
+
+    # determine Burst_n folder
+    try:
+        if burst_index is not None:
+            nextn = int(burst_index)
+        else:
+            existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
+            maxn = -1
+            for d in existing:
+                try:
+                    n = int(d.split('_', 1)[1])
+                    if n > maxn:
+                        maxn = n
+                except Exception:
+                    continue
+            nextn = maxn + 1
+        burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
+    except Exception:
+        burst_dir = os.path.join(base_folder, f'Burst_{burst_index or 0}')
+    try:
+        os.makedirs(burst_dir, exist_ok=False)
+    except Exception:
+        try:
+            burst_dir = os.path.join(base_folder, f'Burst_{nextn}_alt')
+            os.makedirs(burst_dir, exist_ok=True)
+        except Exception as e:
+            logger(f'Burst save: failed to create burst dir: {e}')
+            return [], processed_paths, ''
+
+    toks = [str(t).strip() for t in tokens if t]
+    toks_l = [t.lower() for t in toks]
+
+    max_wait_ms = int(timeout_ms or 5000)
+    poll_ms = int(poll_ms or 200)
+    stable_time = float(stable_s or 0.3)
+    deadline = time.time() + (max_wait_ms / 1000.0)
+
+    # track candidates per token index
+    candidates = {i: [] for i in range(len(toks_l))}
+    last_size = {}
+    stable_since = {}
+    stable_found = {i: [] for i in range(len(toks_l))}
+
+    moved = []
+
+    while time.time() < deadline:
+        try:
+            entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
+        except Exception:
+            entries = []
+
+        now = time.time()
+        for fname in entries:
+            full = os.path.join(outdir, fname)
+            if full in processed_paths:
+                continue
+            # skip files already inside burst_dir
+            try:
+                if os.path.commonpath([os.path.abspath(full), os.path.abspath(burst_dir)]) == os.path.abspath(burst_dir):
+                    continue
+            except Exception:
+                pass
+
+            low = fname.lower()
+            for i, tok_l in enumerate(toks_l):
+                if not tok_l:
+                    continue
+                if match_fn(low, tok_l):
+                    if full not in candidates.get(i, []):
+                        candidates.setdefault(i, []).append(full)
+                        last_size[full] = -1
+                        stable_since[full] = None
+                        try: logger(f"Burst save: found candidate for token '{toks[i]}' -> {fname}")
+                        except Exception: pass
+                    try:
+                        cur_size = os.path.getsize(full)
+                    except Exception:
+                        cur_size = -1
+                    if cur_size == last_size.get(full, -2) and cur_size >= 0:
+                        if stable_since.get(full) is None:
+                            stable_since[full] = now
+                        elif (now - stable_since[full]) >= stable_time:
+                            if full not in stable_found.get(i, []):
+                                stable_found.setdefault(i, []).append(full)
+                                try: logger(f"Burst save: file stable for token '{toks[i]}' -> {fname}")
+                                except Exception: pass
+                    else:
+                        last_size[full] = cur_size
+                        stable_since[full] = None
+                    break
+
+        any_stable = any(bool(v) for v in stable_found.values())
+        if any_stable and (time.time() + 0.1) >= deadline:
+            break
+
+        try:
+            time.sleep(poll_ms / 1000.0)
+        except Exception:
+            pass
+
+    # Build matched list: for each token, sort stable files by mtime ascending
+    matched = []
+    for i, files in stable_found.items():
+        if not files:
+            continue
+        files_unique = []
+        seen = set()
+        for f in files:
+            if f not in seen:
+                seen.add(f)
+                try:
+                    m = os.path.getmtime(f)
+                except Exception:
+                    m = 0
+                files_unique.append((f, toks[i], m))
+        files_unique.sort(key=lambda x: x[2] or 0)
+        matched.extend(files_unique)
+
+    if not matched:
+        try: logger('Burst save: no stable files found matching camera/spectrometer tokens (timed out)')
+        except Exception: pass
+        return [], processed_paths, burst_dir
+
+    counters = {}
+    for full, label, m in matched:
+        try:
+            counters.setdefault(label, 0)
+            j = counters[label]
+            counters[label] = j + 1
+            base, ext = os.path.splitext(os.path.basename(full))
+            safe_label = ''.join(ch for ch in label if ch.isalnum() or ch in ('-', '_')) or 'Token'
+            newname = f"{experiment}_Burst_{safe_label}_{j}{ext}"
+            dest = os.path.join(burst_dir, newname)
+            if os.path.exists(dest):
+                try:
+                    dest = os.path.join(burst_dir, f"{os.path.splitext(newname)[0]}_dup{ext}")
+                except Exception:
+                    pass
+            os.replace(full, dest)
+            try:
+                processed_paths.add(dest)
+            except Exception:
+                pass
+            try: logger(f"Burst saved: {os.path.basename(full)} -> {os.path.join(os.path.basename(burst_dir), os.path.basename(dest))}")
+            except Exception: pass
+            moved.append((full, dest))
+        except Exception as e:
+            try: logger(f"Burst save: failed to move {full}: {e}")
+            except Exception: pass
+
+    return moved, processed_paths, burst_dir
