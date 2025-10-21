@@ -122,12 +122,18 @@ class KinesisFireIO(QtCore.QObject):
             time.sleep(0.2)
             self.dev.EnableDevice()
             time.sleep(0.1)
-            # Default safe state
-            self._set_mode_internal("triggered")
-            if self.cfg.start_enabled:
-                self._set_shutter_on()
-            else:
+            # Default safe state: start in MANUAL mode with shutter OFF to avoid
+            # accidentally arming the device on connect. This prevents transient
+            # triggered/active behavior during startup.
+            try:
+                self._set_mode_internal("manual")
+            except Exception:
+                pass
+            try:
+                # Explicitly ensure shutter is off regardless of cfg.start_enabled
                 self._set_shutter_off()
+            except Exception:
+                pass
             self.connected.emit(self.serial)
             self.log.emit(f"KSC101 connected (serial {self.serial}).")
         except Exception as e:
