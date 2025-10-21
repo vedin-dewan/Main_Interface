@@ -437,11 +437,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fire_panel.request_shots.connect(lambda n: setattr(self, '_last_shots_set_time', time.time()))
         except Exception:
             pass
-        # wire Reset Counter button -> reset internal state and UI
-        try:
-            self.fire_panel.request_reset.connect(self._on_reset_counter)
-        except Exception:
-            pass
+        # Reset button removed from UI; no connection required
         # forward Fire to IO and also handle UI-side bookkeeping in MainWindow
         # For per-shot control, hook request_fire to a MainWindow handler that
         # will orchestrate firing one shot at a time and wait for rename before next.
@@ -910,16 +906,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-    def _on_reset_counter(self):
-        """Reset shot counter and per-shot internal state on user request."""
-        try:
-            self.fire_panel.disp_counter.setValue(0)
-            self._per_shot_current = 0
-            self._per_shot_active = False
-            try: self._per_shot_target = None
-            except Exception: pass
-        except Exception:
-            pass
+    # _on_reset_counter removed: Reset button no longer present in UI
 
     def _on_single_shot_done(self, event_ts: float = None):
         """Called when the fire worker signals that a single shot/pulse finished.

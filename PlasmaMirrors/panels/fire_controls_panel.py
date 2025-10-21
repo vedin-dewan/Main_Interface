@@ -92,10 +92,6 @@ class FireControlsPanel(QtWidgets.QWidget):
         counter_row = QtWidgets.QHBoxLayout()
         counter_row.addWidget(lab_counter)
         counter_row.addWidget(self.disp_counter)
-        # Reset button next to counter
-        self.btn_reset = QtWidgets.QPushButton("Reset")
-        self.btn_reset.setFixedWidth(70)
-        counter_row.addWidget(self.btn_reset)
         # Configure button to edit and save the shot counter
         self.btn_configure = QtWidgets.QPushButton("Configure")
         self.btn_configure.setFixedWidth(90)
@@ -143,7 +139,6 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.rb_burst.toggled.connect(lambda on: on and self._emit_mode("burst"))
         self.spin_shots.editingFinished.connect(self._emit_shots)
         self.btn_fire.clicked.connect(self.request_fire)
-        self.btn_reset.clicked.connect(lambda: self.request_reset.emit())
         self.btn_configure.clicked.connect(self._on_configure_clicked)
 
         # ensure initial visual state for the fire button (continuous by default)
