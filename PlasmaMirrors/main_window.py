@@ -742,8 +742,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     cams = [str(c.get('Name','')).strip() for c in getattr(self.device_tabs, '_cameras', []) if c.get('Name')]
                     specs = [str(s.get('filename','')).strip() for s in getattr(self.device_tabs, '_spectrometers', []) if s.get('filename')]
                     tokens = cams + specs
-                    # use rename wait timeout from settings
-                    timeout_ms = int(getattr(self, '_rename_max_wait_ms', 5000))
+                    # use rename wait timeout from settings (camera buffer)
+                    camera_buffer_ms = int(getattr(self, '_rename_max_wait_ms', 5000))
+                    # estimate burst emission time: shots * (pulse_ms + gap_ms) when available
+                    try:
+                        shots = int(self.fire_panel.spin_shots.value()) if getattr(self.fire_panel, 'spin_shots', None) else getattr(self.fire_io, '_num_shots', 1)
+                    except Exception:
+                        shots = getattr(self.fire_io, '_num_shots', 1) if getattr(self, 'fire_io', None) else 1
+                    est_shot_ms = 0
+                    try:
+                        cfg = getattr(self, 'fire_io', None).cfg
+                        est_shot_ms = int(shots) * int(getattr(cfg, 'pulse_ms', 0) + getattr(cfg, 'gap_ms', 0))
+                    except Exception:
+                        # fallback: assume 100 ms per shot if we have no timing info
+                        try:
+                            est_shot_ms = int(shots) * 100
+                        except Exception:
+                            est_shot_ms = 0
+                    # total timeout = expected shot emission time + camera buffer + small margin
+                    timeout_ms = int(camera_buffer_ms + est_shot_ms + 500)
                     poll_ms = int(getattr(self, '_rename_poll_ms', 200)) if getattr(self, '_rename_poll_ms', None) is not None else 200
                     stable_s = float(getattr(self, '_rename_stable_time', 0.3)) if getattr(self, '_rename_stable_time', None) is not None else 0.3
                     # perform burst save (blocking poll similar to single-shot rename)
