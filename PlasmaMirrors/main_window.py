@@ -766,19 +766,42 @@ class MainWindow(QtWidgets.QMainWindow):
                             current_shot = int(self.fire_panel.disp_counter.value())
                         except Exception:
                             current_shot = None
-                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s, burst_index=current_shot)
-                        # after successful burst save and renames, increment the displayed shot counter by 1
+                        # start background worker to perform burst save so UI stays responsive
                         try:
-                            if hasattr(self, 'fire_panel') and getattr(self.fire_panel, 'disp_counter', None) is not None:
-                                self.fire_panel.disp_counter.setValue(int(self.fire_panel.disp_counter.value()) + 1)
-                                # persist updated counter after successful burst save
+                            params = {
+                                'outdir': outdir,
+                                'burst_rel': burst_rel,
+                                'tokens': tokens,
+                                'experiment': exp_name,
+                                'timeout_ms': timeout_ms,
+                                'poll_ms': poll_ms,
+                                'stable_s': stable_s,
+                                'burst_index': current_shot,
+                                'processed_paths': getattr(self, '_processed_output_files', set()),
+                                'logger': getattr(self.status_panel, 'append_line', None),
+                            }
+                            # create worker and thread
+                            worker = MainWindow._BurstSaveWorker(params)
+                            thread = QtCore.QThread(self)
+                            worker.moveToThread(thread)
+                            # connect signals
+                            worker.finished.connect(self._on_burst_save_finished)
+                            worker.error.connect(lambda msg: self.status_panel.append_line(f"Burst worker error: {msg}"))
+                            thread.started.connect(worker.run)
+                            # ensure thread and worker are cleaned up after finish
+                            def _cleanup():
                                 try:
-                                    if hasattr(self, '_save_shot_counter'):
-                                        self._save_shot_counter()
+                                    thread.quit()
+                                    thread.wait(1000)
                                 except Exception:
                                     pass
-                        except Exception:
-                            pass
+                            worker.finished.connect(_cleanup)
+                            worker.error.connect(_cleanup)
+                            thread.start()
+                        except Exception as e:
+                            try: self.status_panel.append_line(f'Failed to start burst save worker: {e}')
+                            except Exception: pass
+                        # we'll increment the displayed shot counter after the worker reports completion
                     except Exception as e:
                         try: self.status_panel.append_line(f'Burst save failed: {e}')
                         except Exception: pass
@@ -861,6 +884,56 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._per_shot_active = False
         except Exception:
             pass
+
+    # ----------------- Burst save worker helper -----------------
+    class _BurstSaveWorker(QtCore.QObject):
+        """Worker object to run save_burst_files in a background thread.
+
+        Emits a single 'finished' signal with a payload dict containing keys:
+          - moved: list of (old,new)
+          - processed: set of processed paths
+          - burst_dir: str
+          - outdir, burst_rel, experiment, burst_index
+        """
+        finished = QtCore.pyqtSignal(object)
+        error = QtCore.pyqtSignal(str)
+
+        def __init__(self, params: dict):
+            super().__init__()
+            self.params = params
+
+        @QtCore.pyqtSlot()
+        def run(self):
+            try:
+                # import locally to avoid module cycle on UI thread
+                from utilities.file_renamer import save_burst_files
+                moved, processed, burst_dir = save_burst_files(
+                    outdir=self.params.get('outdir', ''),
+                    burst_rel=self.params.get('burst_rel', ''),
+                    tokens=self.params.get('tokens', []),
+                    experiment=self.params.get('experiment', ''),
+                    timeout_ms=self.params.get('timeout_ms', 5000),
+                    poll_ms=self.params.get('poll_ms', 200),
+                    stable_s=self.params.get('stable_s', 0.3),
+                    burst_index=self.params.get('burst_index', None),
+                    processed_paths=self.params.get('processed_paths', set()),
+                    logger=self.params.get('logger', None),
+                )
+                payload = {
+                    'moved': moved,
+                    'processed': processed,
+                    'burst_dir': burst_dir,
+                    'outdir': self.params.get('outdir', ''),
+                    'burst_rel': self.params.get('burst_rel', ''),
+                    'experiment': self.params.get('experiment', ''),
+                    'burst_index': self.params.get('burst_index', None),
+                }
+                self.finished.emit(payload)
+            except Exception as e:
+                try:
+                    self.error.emit(str(e))
+                except Exception:
+                    pass
 
     def _on_reset_counter(self):
         """Reset shot counter and per-shot internal state on user request."""
@@ -1168,6 +1241,96 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
         except Exception:
             pass
+
+    def _on_burst_save_finished(self, payload: dict):
+        """Handle completion of burst save worker on the UI thread.
+
+        payload keys: moved, processed, burst_dir, outdir, burst_rel, experiment, burst_index
+        """
+        try:
+            moved = payload.get('moved', [])
+            processed = payload.get('processed', set()) or set()
+            burst_dir = payload.get('burst_dir') or payload.get('outdir')
+            outdir = payload.get('outdir', '')
+            burst_rel = payload.get('burst_rel', '')
+            experiment = payload.get('experiment', 'Experiment')
+            burst_index = payload.get('burst_index', None)
+
+            # update processed set
+            try:
+                if hasattr(self, '_processed_output_files'):
+                    self._processed_output_files.update(processed)
+            except Exception:
+                pass
+
+            # Prepare InfoWriter payload for the burst (shot_log_dir should be outdir/burst_rel)
+            try:
+                try:
+                    shot_log_dir = os.path.join(outdir, burst_rel) if burst_rel else outdir
+                except Exception:
+                    shot_log_dir = outdir
+
+                payload_writer = {
+                    'outdir': burst_dir or outdir,
+                    'experiment': experiment,
+                    'shotnum': int(burst_index) if burst_index is not None else 0,
+                    'renamed': moved or [],
+                    'part_rows': [(getattr(r.info, 'short', ''), float(getattr(r.info, 'eng_value', 0.0) or 0.0)) for r in getattr(self.part1, 'rows', [])],
+                    'cameras': getattr(self.device_tabs, '_cameras', []) or [],
+                    'spectrometers': getattr(self.device_tabs, '_spectrometers', []) or [],
+                    'event_ts': None,
+                    'burst_shots': int(getattr(self.fire_panel, 'spin_shots', None).value()) if getattr(self.fire_panel, 'spin_shots', None) is not None else None,
+                    'shot_log_dir': shot_log_dir,
+                }
+                # mark info write pending
+                try:
+                    self._info_write_pending = True
+                    self._pending_auto_addresses.clear()
+                except Exception:
+                    pass
+                if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info_and_shot_log', None) is not None:
+                    try:
+                        QtCore.QMetaObject.invokeMethod(self._info_writer, 'write_info_and_shot_log', QtCore.Qt.ConnectionType.QueuedConnection,
+                                                        QtCore.Q_ARG(dict, payload_writer))
+                    except Exception:
+                        try:
+                            self._info_writer.write_info_and_shot_log(payload_writer)
+                        except Exception as e:
+                            try: self.status_panel.append_line(f"Failed to schedule burst info write: {e}")
+                            except Exception: pass
+                else:
+                    # fallback synchronous
+                    try:
+                        tmpw = InfoWriter()
+                        tmpw.write_info_and_shot_log(payload_writer)
+                        try:
+                            self._on_info_written(dict(payload_writer or {}))
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        try: self.status_panel.append_line(f"Failed to write burst info (fallback): {e}")
+                        except Exception: pass
+            except Exception:
+                pass
+
+            # increment displayed shot counter and persist
+            try:
+                if hasattr(self, 'fire_panel') and getattr(self.fire_panel, 'disp_counter', None) is not None:
+                    try:
+                        self.fire_panel.disp_counter.setValue(int(self.fire_panel.disp_counter.value()) + 1)
+                    except Exception:
+                        pass
+                    # persist updated counter
+                    try:
+                        if hasattr(self, '_save_shot_counter'):
+                            self._save_shot_counter()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception as e:
+            try: self.status_panel.append_line(f"Burst save finish handler error: {e}")
+            except Exception: pass
 
     @QtCore.pyqtSlot(str, int)
     def _on_device_connect_requested(self, port: str, baud: int):
