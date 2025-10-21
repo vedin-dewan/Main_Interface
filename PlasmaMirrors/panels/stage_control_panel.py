@@ -518,20 +518,45 @@ class StageControlPanel(QtWidgets.QWidget):
         table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        # Make header and vertical header text black for legibility
+        try:
+            table.horizontalHeader().setStyleSheet("QHeaderView::section { color: #000000; }")
+        except Exception:
+            pass
+        try:
+            table.verticalHeader().setStyleSheet("QHeaderView::section { color: #000000; }")
+        except Exception:
+            pass
         dlg_layout.addWidget(table)
 
-        # Helper buttons: add, remove, move up, move down
+        # Helper buttons: add, remove (Move Up/Down removed)
         btn_row = QtWidgets.QHBoxLayout()
         btn_add = QtWidgets.QPushButton("Add Stage")
         btn_remove = QtWidgets.QPushButton("Remove Selected")
-        btn_up = QtWidgets.QPushButton("Move Up")
-        btn_down = QtWidgets.QPushButton("Move Down")
-        btn_row.addWidget(btn_add); btn_row.addWidget(btn_remove); btn_row.addWidget(btn_up); btn_row.addWidget(btn_down)
+        btn_row.addWidget(btn_add); btn_row.addWidget(btn_remove)
         dlg_layout.addLayout(btn_row)
 
         # Dialog buttons
         dlg_buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Save | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         dlg_layout.addWidget(dlg_buttons)
+
+        # selection state for Select buttons (remember previous selection)
+        prev_btn = {'btn': None}
+        def on_select_row(row_idx: int, btn: QtWidgets.QPushButton):
+            try:
+                table.selectRow(row_idx)
+            except Exception:
+                pass
+            try:
+                if prev_btn['btn'] is not None and prev_btn['btn'] is not btn:
+                    prev_btn['btn'].setStyleSheet('')
+            except Exception:
+                pass
+            try:
+                btn.setStyleSheet('background-color: #4CAF50; color: white;')
+                prev_btn['btn'] = btn
+            except Exception:
+                pass
 
         def load_preset_to_table(preset_name: str):
             table.setRowCount(0)
@@ -542,9 +567,11 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.insertRow(r)
                 # Name
                 name_item = QtWidgets.QLineEdit(str(st.get('name', '')))
+                name_item.setStyleSheet('color: #000000;')
                 table.setCellWidget(r, 0, name_item)
                 # Stage Num
                 sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999)
+                sn.setStyleSheet('color: #000000;')
                 try:
                     if st.get('stage_num') is not None:
                         sn.setValue(int(st.get('stage_num')))
@@ -553,6 +580,7 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.setCellWidget(r, 1, sn)
                 # Position
                 pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0)
+                pos.setStyleSheet('color: #000000;')
                 try:
                     if st.get('position') is not None:
                         pos.setValue(float(st.get('position')))
@@ -561,6 +589,7 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.setCellWidget(r, 2, pos)
                 # Order
                 ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999)
+                ordw.setStyleSheet('color: #000000;')
                 try:
                     if st.get('order') is not None:
                         ordw.setValue(int(st.get('order')))
@@ -569,6 +598,7 @@ class StageControlPanel(QtWidgets.QWidget):
                 table.setCellWidget(r, 3, ordw)
                 # Premoves (comma separated)
                 prem = QtWidgets.QLineEdit()
+                prem.setStyleSheet('color: #000000;')
                 premoves = st.get('premoves', [])
                 if isinstance(premoves, (list, tuple)):
                     prem.setText(','.join([str(x) for x in premoves]))
@@ -578,6 +608,8 @@ class StageControlPanel(QtWidgets.QWidget):
                 # Actions (placeholder)
                 aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0)
                 sel_btn = QtWidgets.QPushButton("Select")
+                sel_btn.setProperty('row_index', r)
+                sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b))
                 ah.addWidget(sel_btn)
                 aw.setLayout(ah)
                 table.setCellWidget(r, 5, aw)
@@ -595,12 +627,12 @@ class StageControlPanel(QtWidgets.QWidget):
         def add_stage():
             r = table.rowCount()
             table.insertRow(r)
-            table.setCellWidget(r, 0, QtWidgets.QLineEdit('New Stage'))
-            sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999); table.setCellWidget(r, 1, sn)
-            pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0); table.setCellWidget(r, 2, pos)
-            ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999); table.setCellWidget(r, 3, ordw)
-            table.setCellWidget(r, 4, QtWidgets.QLineEdit(''))
-            aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
+            le = QtWidgets.QLineEdit('New Stage'); le.setStyleSheet('color: #000000;'); table.setCellWidget(r, 0, le)
+            sn = QtWidgets.QSpinBox(); sn.setMinimum(0); sn.setMaximum(9999); sn.setStyleSheet('color: #000000;'); table.setCellWidget(r, 1, sn)
+            pos = QtWidgets.QDoubleSpinBox(); pos.setDecimals(6); pos.setMinimum(-99999.0); pos.setMaximum(99999.0); pos.setStyleSheet('color: #000000;'); table.setCellWidget(r, 2, pos)
+            ordw = QtWidgets.QSpinBox(); ordw.setMinimum(0); ordw.setMaximum(9999); ordw.setStyleSheet('color: #000000;'); table.setCellWidget(r, 3, ordw)
+            prem_le = QtWidgets.QLineEdit(''); prem_le.setStyleSheet('color: #000000;'); table.setCellWidget(r, 4, prem_le)
+            aw = QtWidgets.QWidget(); ah = QtWidgets.QHBoxLayout(); ah.setContentsMargins(0,0,0,0); sel_btn = QtWidgets.QPushButton('Select'); sel_btn.setProperty('row_index', r); sel_btn.clicked.connect(lambda _checked, rr=r, b=sel_btn: on_select_row(rr, b)); ah.addWidget(sel_btn); aw.setLayout(ah); table.setCellWidget(r, 5, aw)
 
         def remove_selected():
             sel = table.selectionModel().selectedRows()
@@ -608,39 +640,8 @@ class StageControlPanel(QtWidgets.QWidget):
             for rr in rows:
                 table.removeRow(rr)
 
-        def move_selected_up():
-            sel = table.selectionModel().selectedRows()
-            if not sel:
-                return
-            r = sel[0].row()
-            if r <= 0:
-                return
-            # swap row widgets with previous
-            for c in range(table.columnCount()):
-                w1 = table.cellWidget(r, c)
-                w0 = table.cellWidget(r-1, c)
-                table.removeCellWidget(r, c); table.removeCellWidget(r-1, c)
-                table.setCellWidget(r-1, c, w1); table.setCellWidget(r, c, w0)
-            table.selectRow(r-1)
-
-        def move_selected_down():
-            sel = table.selectionModel().selectedRows()
-            if not sel:
-                return
-            r = sel[0].row()
-            if r >= table.rowCount()-1:
-                return
-            for c in range(table.columnCount()):
-                w1 = table.cellWidget(r, c)
-                w2 = table.cellWidget(r+1, c)
-                table.removeCellWidget(r, c); table.removeCellWidget(r+1, c)
-                table.setCellWidget(r, c, w2); table.setCellWidget(r+1, c, w1)
-            table.selectRow(r+1)
-
         btn_add.clicked.connect(add_stage)
         btn_remove.clicked.connect(remove_selected)
-        btn_up.clicked.connect(move_selected_up)
-        btn_down.clicked.connect(move_selected_down)
 
         def on_save():
             # Build updated payload for the current preset
