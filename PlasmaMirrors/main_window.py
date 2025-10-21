@@ -97,6 +97,22 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self.overall_controls = SavingPanel()
         self.fire_panel    = FireControlsPanel()
+        # -- Shot counter persistence --
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self._shot_counter_file = os.path.join(base_dir, "parameters", "shot_counter.json")
+            try:
+                # allow the panel to notify us when the user configures a new value
+                self.fire_panel.shot_config_saved.connect(self._on_shot_config_saved)
+            except Exception:
+                pass
+            # load persisted value if present
+            try:
+                self._load_shot_counter()
+            except Exception:
+                pass
+        except Exception:
+            pass
         # Use the Interval (ms) control from the Fire panel as the rename wait budget (ms)
         try:
             # initialize attribute from current UI value
@@ -732,7 +748,24 @@ class MainWindow(QtWidgets.QMainWindow):
                     stable_s = float(getattr(self, '_rename_stable_time', 0.3)) if getattr(self, '_rename_stable_time', None) is not None else 0.3
                     # perform burst save (blocking poll similar to single-shot rename)
                     try:
-                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s)
+                        # use the current displayed shot counter as the Burst folder index
+                        try:
+                            current_shot = int(self.fire_panel.disp_counter.value())
+                        except Exception:
+                            current_shot = None
+                        self._handle_burst_save(outdir=outdir, burst_rel=burst_rel, tokens=tokens, experiment=exp_name, timeout_ms=timeout_ms, poll_ms=poll_ms, stable_s=stable_s, burst_index=current_shot)
+                        # after successful burst save and renames, increment the displayed shot counter by 1
+                        try:
+                            if hasattr(self, 'fire_panel') and getattr(self.fire_panel, 'disp_counter', None) is not None:
+                                self.fire_panel.disp_counter.setValue(int(self.fire_panel.disp_counter.value()) + 1)
+                                # persist updated counter after successful burst save
+                                try:
+                                    if hasattr(self, '_save_shot_counter'):
+                                        self._save_shot_counter()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
                     except Exception as e:
                         try: self.status_panel.append_line(f'Burst save failed: {e}')
                         except Exception: pass
@@ -1025,7 +1058,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try: self.status_panel.append_line(f"Rename exception: {e}")
             except Exception: pass
 
-    def _handle_burst_save(self, outdir: str, burst_rel: str, tokens: list, experiment: str, timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3):
+    def _handle_burst_save(self, outdir: str, burst_rel: str, tokens: list, experiment: str, timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3, burst_index: int | None = None):
         """Create the burst folder and move/rename files matching tokens into it.
 
         Behavior:
@@ -1052,21 +1085,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception: pass
                 return
 
-            # find next Burst_n
+            # determine Burst_n folder: use provided burst_index if available, otherwise find next available n
             try:
-                existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
+                if burst_index is not None:
+                    nextn = int(burst_index)
+                else:
+                    existing = [d for d in os.listdir(base_folder) if os.path.isdir(os.path.join(base_folder, d)) and d.startswith('Burst_')]
+                    maxn = -1
+                    for d in existing:
+                        try:
+                            n = int(d.split('_', 1)[1])
+                            if n > maxn:
+                                maxn = n
+                        except Exception:
+                            continue
+                    nextn = maxn + 1
+                burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
             except Exception:
-                existing = []
-            maxn = -1
-            for d in existing:
-                try:
-                    n = int(d.split('_', 1)[1])
-                    if n > maxn:
-                        maxn = n
-                except Exception:
-                    continue
-            nextn = maxn + 1
-            burst_dir = os.path.join(base_folder, f'Burst_{nextn}')
+                burst_dir = os.path.join(base_folder, f'Burst_{burst_index or 0}')
             try:
                 os.makedirs(burst_dir, exist_ok=False)
             except Exception:
@@ -1356,6 +1392,15 @@ class MainWindow(QtWidgets.QMainWindow):
             # After info write completes, attempt to finish the overall sequence (may start queued run)
             try:
                 self._try_finish_sequence()
+            except Exception:
+                pass
+            # After info write completes, persist shot counter (single-shot case)
+            try:
+                if getattr(self, '_save_shot_counter', None) is not None:
+                    try:
+                        self._save_shot_counter()
+                    except Exception:
+                        pass
             except Exception:
                 pass
         except Exception:
@@ -1913,7 +1958,6 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-    
         try:
             if hasattr(self, 'io_thread') and self.io_thread is not None:
                 self.io_thread.quit()

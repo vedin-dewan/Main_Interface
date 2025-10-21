@@ -7,6 +7,8 @@ class FireControlsPanel(QtWidgets.QWidget):
     request_shots = QtCore.pyqtSignal(int)   # applies to both Single and Burst
     request_reset = QtCore.pyqtSignal()      # reset shot counter on request
     request_fire  = QtCore.pyqtSignal()      # start action
+    # Emitted when the user configures and saves a new shot counter value
+    shot_config_saved = QtCore.pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -94,6 +96,10 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.btn_reset = QtWidgets.QPushButton("Reset")
         self.btn_reset.setFixedWidth(70)
         counter_row.addWidget(self.btn_reset)
+        # Configure button to edit and save the shot counter
+        self.btn_configure = QtWidgets.QPushButton("Configure")
+        self.btn_configure.setFixedWidth(90)
+        counter_row.addWidget(self.btn_configure)
         counter_row.addStretch(1)
         # move counter to row 3 because we added the post-auto row
         g.addLayout(counter_row, 3, 1, 1, 2)
@@ -138,6 +144,7 @@ class FireControlsPanel(QtWidgets.QWidget):
         self.spin_shots.editingFinished.connect(self._emit_shots)
         self.btn_fire.clicked.connect(self.request_fire)
         self.btn_reset.clicked.connect(lambda: self.request_reset.emit())
+        self.btn_configure.clicked.connect(self._on_configure_clicked)
 
         # ensure initial visual state for the fire button (continuous by default)
         try:
@@ -205,3 +212,22 @@ class FireControlsPanel(QtWidgets.QWidget):
 
     def _emit_shots(self):
         self.request_shots.emit(int(self.spin_shots.value()))
+
+    def _on_configure_clicked(self):
+        """Open a simple dialog to set the shot counter and emit the saved value."""
+        try:
+            current = int(self.disp_counter.value()) if getattr(self, 'disp_counter', None) is not None else 0
+            val, ok = QtWidgets.QInputDialog.getInt(self, 'Configure Shot Counter', 'Shot number:', value=current, min=0, max=9999999)
+            if ok:
+                try:
+                    # update displayed counter immediately
+                    self.disp_counter.setValue(int(val))
+                except Exception:
+                    pass
+                # notify main window to persist this value
+                try:
+                    self.shot_config_saved.emit(int(val))
+                except Exception:
+                    pass
+        except Exception:
+            pass
