@@ -247,25 +247,28 @@
     ]
   },
   "Home PM3": {
-    "last_saved_time": "2025-10-09T15:16:47",
+    "last_saved_time": "2025-10-21T18:01:38",
     "stages": [
       {
         "name": "PM3Y",
-        "position": 0,
         "stage_num": 5,
-        "order": 2
+        "position": 0.0,
+        "order": 2,
+        "premoves": []
       },
       {
         "name": "PM3Z",
-        "position": 0,
         "stage_num": 6,
-        "order": 1
+        "position": 0.0,
+        "order": 1,
+        "premoves": []
       },
       {
         "name": "PM3X",
-        "position": 0,
         "stage_num": 14,
-        "order": 3
+        "position": 0.0,
+        "order": 3,
+        "premoves": []
       }
     ]
   }
