@@ -415,6 +415,8 @@ try:
           error(str)
         """
         finished = QtCore.pyqtSignal(object, object, str)
+        # emit log messages from worker thread (connected in main thread)
+        log = QtCore.pyqtSignal(str)
         error = QtCore.pyqtSignal(str)
 
         def __init__(self, *, outdir: str, burst_rel: str, tokens: Iterable[str], experiment: str,
@@ -434,8 +436,21 @@ try:
                 'burst_index': burst_index,
                 'processed_paths': processed_paths,
                 'match_fn': match_fn,
-                'logger': logger,
+                # original logger is ignored to avoid calling UI methods from worker thread
+                'logger': None,
             }
+            # internal logger that emits a Qt signal; safe to call from worker thread
+            def _emit(m: str):
+                try:
+                    self.log.emit(str(m))
+                except Exception:
+                    try:
+                        # last-resort print
+                        print(m)
+                    except Exception:
+                        pass
+
+            self._logger_callable = _emit
 
         @QtCore.pyqtSlot()
         def run(self):
@@ -451,7 +466,7 @@ try:
                     burst_index=self._args['burst_index'],
                     processed_paths=self._args['processed_paths'],
                     match_fn=self._args['match_fn'],
-                    logger=self._args['logger'],
+                    logger=self._logger_callable,
                 )
                 try:
                     # emit results back to the main thread

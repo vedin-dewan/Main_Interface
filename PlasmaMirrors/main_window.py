@@ -1124,7 +1124,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     poll_ms=poll_ms,
                     stable_s=stable_s,
                     burst_index=burst_index,
-                    processed_paths=getattr(self, '_processed_output_files', set()),
+                    # pass a shallow copy so the worker doesn't mutate the UI thread set concurrently
+                    processed_paths=set(getattr(self, '_processed_output_files', set()) or set()),
                     logger=getattr(self.status_panel, 'append_line', None),
                 )
             except Exception as e:
@@ -1141,6 +1142,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
 
             worker.moveToThread(t)
+
+            # forward worker log messages to status panel in UI thread
+            try:
+                worker.log.connect(getattr(self.status_panel, 'append_line', lambda m: None))
+            except Exception:
+                pass
 
             # on finished, update processed set and dispatch info write similar to sync path
             def _on_burst_finished(moved, processed, burst_dir):
