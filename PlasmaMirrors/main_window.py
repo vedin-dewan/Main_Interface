@@ -2058,3 +2058,72 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
         except Exception:
             pass
+
+    # ---- Shot counter persistence helpers ----
+    def _on_shot_config_saved(self, val: int):
+        """Handler called when the Fire panel Configure button saves a new value."""
+        try:
+            try:
+                if hasattr(self, 'fire_panel') and getattr(self.fire_panel, 'disp_counter', None) is not None:
+                    self.fire_panel.disp_counter.setValue(int(val))
+            except Exception:
+                pass
+            try:
+                self._save_shot_counter()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _load_shot_counter(self):
+        """Load shot counter from parameters/shot_counter.json (best-effort)."""
+        try:
+            f = getattr(self, '_shot_counter_file', None)
+            if not f:
+                return
+            if not os.path.exists(f):
+                return
+            try:
+                with open(f, 'r', encoding='utf-8') as fh:
+                    j = json.load(fh)
+                    v = int(j.get('shot_counter', 0)) if isinstance(j, dict) else 0
+            except Exception:
+                v = 0
+            try:
+                if hasattr(self, 'fire_panel') and getattr(self.fire_panel, 'disp_counter', None) is not None:
+                    self.fire_panel.disp_counter.setValue(int(v))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _save_shot_counter(self):
+        """Persist the current displayed shot counter to parameters/shot_counter.json."""
+        try:
+            f = getattr(self, '_shot_counter_file', None)
+            if not f:
+                return
+            # ensure directory exists
+            try:
+                os.makedirs(os.path.dirname(f), exist_ok=True)
+            except Exception:
+                pass
+            try:
+                v = int(self.fire_panel.disp_counter.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'disp_counter', None) else 0
+            except Exception:
+                v = 0
+            # write atomically: write to temp then replace
+            try:
+                tmp = f + '.tmp'
+                with open(tmp, 'w', encoding='utf-8') as fh:
+                    json.dump({'shot_counter': int(v)}, fh)
+                try:
+                    os.replace(tmp, f)
+                except Exception:
+                    # fallback to non-atomic write
+                    with open(f, 'w', encoding='utf-8') as fh:
+                        json.dump({'shot_counter': int(v)}, fh)
+            except Exception:
+                pass
+        except Exception:
+            pass
