@@ -187,10 +187,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._pm_auto = PMAutoManager(getattr(self, 'pm_panel', None), getattr(self, 'part1', None).rows if getattr(self, 'part1', None) is not None else [], logger=getattr(self, 'status_panel', None).append_line)
         except Exception:
             self._pm_auto = None
-        # alignment quick-toggle mappings: addr -> on_position (float)
+        # alignment quick-toggle mappings: addr -> on/off positions (float)
         # maintain separate mappings for PG and HeNe groups
         self._alignment_pg_onpos = {}
+        self._alignment_pg_offpos = {}
         self._alignment_hene_onpos = {}
+        self._alignment_hene_offpos = {}
         # connect overall_controls alignment switch signals if available
         try:
             if getattr(self, 'overall_controls', None):
@@ -1399,6 +1401,31 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
+        # Also update the alignment lights: if this address is in either the ON or OFF mapping,
+        # set the moving (yellow) state while it's moving.
+        try:
+            if is_moving:
+                try:
+                    if int(address) in getattr(self, '_alignment_pg_onpos', {}) or int(address) in getattr(self, '_alignment_pg_offpos', {}):
+                        try:
+                            if getattr(self, 'overall_controls', None) is not None:
+                                self.overall_controls.set_alignment_pg_moving()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    if int(address) in getattr(self, '_alignment_hene_onpos', {}) or int(address) in getattr(self, '_alignment_hene_offpos', {}):
+                        try:
+                            if getattr(self, 'overall_controls', None) is not None:
+                                self.overall_controls.set_alignment_hene_moving()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     @QtCore.pyqtSlot(dict)
     def _on_info_written(self, payload: dict):
         """Called when Info + SHOT_LOG have been written for a shot.
@@ -1565,17 +1592,31 @@ class MainWindow(QtWidgets.QMainWindow):
                     pg_on = self._alignment_pg_onpos.get(int(address), None)
                 except Exception:
                     pg_on = None
-                if pg_on is not None:
+                if pg_on is not None or (hasattr(self, '_alignment_pg_offpos') and int(address) in self._alignment_pg_offpos):
                     try:
-                        if abs(float(final_pos) - float(pg_on)) <= 1e-4:
-                            try:
+                        # prefer ON comparison first
+                        matched = False
+                        try:
+                            if pg_on is not None and abs(float(final_pos) - float(pg_on)) <= 1e-4:
+                                matched = True
                                 if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_pg_light_state', None):
                                     self.overall_controls.set_alignment_pg_light_state(True)
+                        except Exception:
+                            pass
+                        if not matched:
+                            try:
+                                off_pos = self._alignment_pg_offpos.get(int(address), None)
+                                if off_pos is not None and abs(float(final_pos) - float(off_pos)) <= 1e-4:
+                                    matched = True
+                                    if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_pg_light_state', None):
+                                        # use False to indicate OFF (red)
+                                        self.overall_controls.set_alignment_pg_light_state(False)
                             except Exception:
                                 pass
-                        else:
+                        if not matched:
                             try:
                                 if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_pg_light_state', None):
+                                    # not at either configured position
                                     self.overall_controls.set_alignment_pg_light_state(False)
                             except Exception:
                                 pass
@@ -1587,15 +1628,26 @@ class MainWindow(QtWidgets.QMainWindow):
                     hene_on = self._alignment_hene_onpos.get(int(address), None)
                 except Exception:
                     hene_on = None
-                if hene_on is not None:
+                if hene_on is not None or (hasattr(self, '_alignment_hene_offpos') and int(address) in self._alignment_hene_offpos):
                     try:
-                        if abs(float(final_pos) - float(hene_on)) <= 1e-4:
-                            try:
+                        matched = False
+                        try:
+                            if hene_on is not None and abs(float(final_pos) - float(hene_on)) <= 1e-4:
+                                matched = True
                                 if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_hene_light_state', None):
                                     self.overall_controls.set_alignment_hene_light_state(True)
+                        except Exception:
+                            pass
+                        if not matched:
+                            try:
+                                off_pos = self._alignment_hene_offpos.get(int(address), None)
+                                if off_pos is not None and abs(float(final_pos) - float(off_pos)) <= 1e-4:
+                                    matched = True
+                                    if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_hene_light_state', None):
+                                        self.overall_controls.set_alignment_hene_light_state(False)
                             except Exception:
                                 pass
-                        else:
+                        if not matched:
                             try:
                                 if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_hene_light_state', None):
                                     self.overall_controls.set_alignment_hene_light_state(False)
@@ -2121,13 +2173,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_alignment_pg_switch_requested(self, address: int, target: float, on: bool):
         try:
             if on:
+                # record ON position for this address
                 self._alignment_pg_onpos[int(address)] = float(target)
             else:
-                try:
-                    if int(address) in self._alignment_pg_onpos:
-                        del self._alignment_pg_onpos[int(address)]
-                except Exception:
-                    pass
+                # record OFF position for this address
+                self._alignment_pg_offpos[int(address)] = float(target)
         except Exception:
             pass
         # reuse generic scheduling
@@ -2151,13 +2201,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_alignment_hene_switch_requested(self, address: int, target: float, on: bool):
         try:
             if on:
+                # record ON position for this address
                 self._alignment_hene_onpos[int(address)] = float(target)
             else:
-                try:
-                    if int(address) in self._alignment_hene_onpos:
-                        del self._alignment_hene_onpos[int(address)]
-                except Exception:
-                    pass
+                # record OFF position for this address
+                self._alignment_hene_offpos[int(address)] = float(target)
         except Exception:
             pass
         # reuse generic scheduling
