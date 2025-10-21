@@ -401,3 +401,72 @@ def save_burst_files(
         try: logger('Burst save: no stable files found matching camera/spectrometer tokens (timed out)')
         except Exception: pass
     return moved, processed_paths, burst_dir
+
+
+# Optional: PyQt worker to run burst save off the GUI thread.
+try:
+    from PyQt6 import QtCore
+
+    class BurstSaveWorker(QtCore.QObject):
+        """QObject worker that runs save_burst_files in a background QThread.
+
+        Signals:
+          finished(moved_list, processed_set, burst_dir)
+          error(str)
+        """
+        finished = QtCore.pyqtSignal(object, object, str)
+        error = QtCore.pyqtSignal(str)
+
+        def __init__(self, *, outdir: str, burst_rel: str, tokens: Iterable[str], experiment: str,
+                     timeout_ms: int = 5000, poll_ms: int = 200, stable_s: float = 0.3,
+                     burst_index: Optional[int] = None, processed_paths: Optional[Set[str]] = None,
+                     match_fn: Optional[Callable[[str, str], bool]] = None,
+                     logger: Optional[Callable[[str], None]] = None):
+            super().__init__()
+            self._args = {
+                'outdir': outdir,
+                'burst_rel': burst_rel,
+                'tokens': tokens,
+                'experiment': experiment,
+                'timeout_ms': timeout_ms,
+                'poll_ms': poll_ms,
+                'stable_s': stable_s,
+                'burst_index': burst_index,
+                'processed_paths': processed_paths,
+                'match_fn': match_fn,
+                'logger': logger,
+            }
+
+        @QtCore.pyqtSlot()
+        def run(self):
+            try:
+                moved, processed, burst_dir = save_burst_files(
+                    outdir=self._args['outdir'],
+                    burst_rel=self._args['burst_rel'],
+                    tokens=self._args['tokens'],
+                    experiment=self._args['experiment'],
+                    timeout_ms=self._args['timeout_ms'],
+                    poll_ms=self._args['poll_ms'],
+                    stable_s=self._args['stable_s'],
+                    burst_index=self._args['burst_index'],
+                    processed_paths=self._args['processed_paths'],
+                    match_fn=self._args['match_fn'],
+                    logger=self._args['logger'],
+                )
+                try:
+                    # emit results back to the main thread
+                    self.finished.emit(moved, processed, burst_dir)
+                except Exception:
+                    # fallback: emit as strings if complex types cause issues
+                    try:
+                        self.finished.emit(list(moved), set(processed or []), str(burst_dir or ''))
+                    except Exception:
+                        pass
+            except Exception as e:
+                try:
+                    self.error.emit(str(e))
+                except Exception:
+                    pass
+except Exception:
+    # PyQt6 not available — worker won't be created.
+    BurstSaveWorker = None
