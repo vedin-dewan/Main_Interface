@@ -163,8 +163,16 @@ class InfoWriter(QtCore.QObject):
 
             # Build info lines
             info_lines = []
-            info_lines.append("ShotInfoWriter: VERSION_2.0.0")
+            info_lines.append("ShotInfoWriter")
+            # second line: allow burst metadata to be prepended when present
             second = ["Shot", str(shotnum), hr_date, time_display]
+            try:
+                burst_shots = payload.get('burst_shots', None)
+                if burst_shots is not None:
+                    # Prepend Burst metadata before the Shot entry as requested
+                    second = [f"Burst {int(burst_shots)} Shots"] + second
+            except Exception:
+                pass
             try:
                 for abr, val in part_rows:
                     second.append(f"{abr}-{float(val):.3f}")

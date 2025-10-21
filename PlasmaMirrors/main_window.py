@@ -1095,6 +1095,52 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._processed_output_files.update(processed)
                 except Exception:
                     pass
+                # After moving/renaming, write a single Info file inside the burst folder
+                try:
+                    # prepare payload similar to single-shot flow but targeted at the burst_dir
+                    payload = {
+                        'outdir': burst_dir or outdir,
+                        'experiment': experiment,
+                        'shotnum': int(burst_index) if burst_index is not None else 0,
+                        'renamed': moved or [],
+                        'part_rows': [(getattr(r.info, 'short', ''), float(getattr(r.info, 'eng_value', 0.0) or 0.0)) for r in getattr(self.part1, 'rows', [])],
+                        'cameras': getattr(self.device_tabs, '_cameras', []) or [],
+                        'spectrometers': getattr(self.device_tabs, '_spectrometers', []) or [],
+                        'event_ts': None,
+                        # custom flag for InfoWriter to prepend burst descriptor line
+                        'burst_shots': int(getattr(self.fire_panel, 'spin_shots', None).value()) if getattr(self.fire_panel, 'spin_shots', None) is not None else None,
+                    }
+                    # mark info write pending so UI can reflect that post-processing is ongoing
+                    try:
+                        self._info_write_pending = True
+                        self._pending_auto_addresses.clear()
+                    except Exception:
+                        pass
+                    if getattr(self, '_info_writer', None) is not None and getattr(self._info_writer, 'write_info_and_shot_log', None) is not None:
+                        try:
+                            QtCore.QMetaObject.invokeMethod(self._info_writer, 'write_info_and_shot_log', QtCore.Qt.ConnectionType.QueuedConnection,
+                                                            QtCore.Q_ARG(dict, payload))
+                        except Exception:
+                            try:
+                                self._info_writer.write_info_and_shot_log(payload)
+                            except Exception as e:
+                                try: self.status_panel.append_line(f"Failed to schedule burst info write: {e}")
+                                except Exception: pass
+                    else:
+                        # best-effort synchronous write if background writer not available
+                        try:
+                            tmpw = InfoWriter()
+                            tmpw.write_info_and_shot_log(payload)
+                            try:
+                                # emulate asynchronous completion
+                                self._on_info_written(dict(payload or {}))
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            try: self.status_panel.append_line(f"Failed to write burst info (fallback): {e}")
+                            except Exception: pass
+                except Exception:
+                    pass
             except Exception as e:
                 try: self.status_panel.append_line(f'Burst save failed: {e}')
                 except Exception: pass
@@ -1187,59 +1233,58 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.status_panel.append_line(f"InfoWriter completed for shot {sn}")
             except Exception:
                 pass
-            # Only perform Auto behavior when in a per-shot sequence (single-shot mode).
-            # Allow if either the per-shot orchestration is active or the Fire panel's
-            # Single mode radio is currently selected (covers the case where the
-            # per-shot flag was cleared before the background writer finished).
+            # Clear pending info-write state so UI can re-enable Fire when appropriate.
+            try:
+                self._info_write_pending = False
+            except Exception:
+                pass
+
+            # Only perform PM Auto moves when in a per-shot sequence (single-shot mode).
+            # Otherwise, skip PM Auto but still proceed to finish sequence and persist state.
             single_mode_ui = False
             try:
                 single_mode_ui = bool(getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'rb_single', None) and self.fire_panel.rb_single.isChecked())
             except Exception:
                 single_mode_ui = False
-            if not (getattr(self, '_per_shot_active', False) or single_mode_ui):
-                try: self.status_panel.append_line("PM Auto: skipping because not in single-shot mode")
-                except Exception: pass
-                return
-            # Compute PM Auto moves using PMAutoManager and emit jogs
-            try:
-                moves = []
-                if getattr(self, '_pm_auto', None) is not None:
-                    try:
-                        moves = self._pm_auto.generate_moves()
-                    except Exception:
-                        moves = []
-                auto_addresses = set()
-                for m in moves:
-                    try:
-                        addr = int(m.get('address'))
-                        delta = float(m.get('delta', 0.0))
-                        unit = str(m.get('unit', ''))
-                        log = str(m.get('log', ''))
-                        try:
-                            if log:
-                                self.status_panel.append_line(log)
-                        except Exception:
-                            pass
-                        auto_addresses.add(addr)
-                        QtCore.QTimer.singleShot(0, lambda a=addr, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
-                    except Exception:
-                        continue
+
+            if getattr(self, '_per_shot_active', False) or single_mode_ui:
+                # Compute PM Auto moves using PMAutoManager and emit jogs
                 try:
-                    self._pending_auto_addresses.update(auto_addresses)
+                    moves = []
+                    if getattr(self, '_pm_auto', None) is not None:
+                        try:
+                            moves = self._pm_auto.generate_moves()
+                        except Exception:
+                            moves = []
+                    auto_addresses = set()
+                    for m in moves:
+                        try:
+                            addr = int(m.get('address'))
+                            delta = float(m.get('delta', 0.0))
+                            unit = str(m.get('unit', ''))
+                            log = str(m.get('log', ''))
+                            try:
+                                if log:
+                                    self.status_panel.append_line(log)
+                            except Exception:
+                                pass
+                            auto_addresses.add(addr)
+                            QtCore.QTimer.singleShot(0, lambda a=addr, d=delta, u=unit: self.req_jog.emit(a, float(d), u))
+                        except Exception:
+                            continue
+                    try:
+                        self._pending_auto_addresses.update(auto_addresses)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
-            except Exception:
-                pass
-            try:
-                self._info_write_pending = False
-            except Exception:
-                pass
+
             # After info write completes, attempt to finish the overall sequence (may start queued run)
             try:
                 self._try_finish_sequence()
             except Exception:
                 pass
-            # After info write completes, persist shot counter (single-shot case)
+            # After info write completes, persist shot counter
             try:
                 if getattr(self, '_save_shot_counter', None) is not None:
                     try:
