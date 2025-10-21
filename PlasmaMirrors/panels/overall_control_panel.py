@@ -121,7 +121,10 @@ class SavingPanel(QtWidgets.QGroupBox):
 
         # place headings and rows in the grid: PG group first, HeNe group below it
         # increase spacing above these rows so they don't feel cramped under the Burst Save field
-        layout.setRowMinimumHeight(3, 8)
+        # double the gap between the Burst Save row and the alignment rows
+        layout.setRowMinimumHeight(3, 72)
+        # also increase vertical spacing between grid rows
+        layout.setVerticalSpacing(24)
         layout.addWidget(self.alignment_pg_label, 3, 0)
         layout.addLayout(pg_row, 4, 0, 1, 2)
 
