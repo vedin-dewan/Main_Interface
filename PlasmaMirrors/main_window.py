@@ -1098,6 +1098,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 # After moving/renaming, write a single Info file inside the burst folder
                 try:
                     # prepare payload similar to single-shot flow but targeted at the burst_dir
+                    # compute where the SHOT_LOG should live: the burst-relative folder
+                    try:
+                        shot_log_dir = os.path.join(outdir, burst_rel) if burst_rel else outdir
+                    except Exception:
+                        shot_log_dir = outdir
+
                     payload = {
                         'outdir': burst_dir or outdir,
                         'experiment': experiment,
@@ -1109,6 +1115,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         'event_ts': None,
                         # custom flag for InfoWriter to prepend burst descriptor line
                         'burst_shots': int(getattr(self.fire_panel, 'spin_shots', None).value()) if getattr(self.fire_panel, 'spin_shots', None) is not None else None,
+                        # location to write/update the SHOT_LOG for bursts: outdir/<burst_rel>
+                        'shot_log_dir': shot_log_dir,
                     }
                     # mark info write pending so UI can reflect that post-processing is ongoing
                     try:

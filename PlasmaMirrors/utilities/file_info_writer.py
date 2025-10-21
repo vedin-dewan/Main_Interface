@@ -61,15 +61,19 @@ class InfoWriter(QtCore.QObject):
             outdir = str(payload.get('outdir', '') or '').strip()
             info_name = str(payload.get('info_name', '') or '').strip()
             second_line = payload.get('second_line', '') or ''
-            if not outdir or not info_name or not second_line:
+            # support explicit shot_log_dir when the SHOT_LOG should live elsewhere
+            shot_log_dir = str(payload.get('shot_log_dir', '') or '').strip() or outdir
+            if not shot_log_dir or not info_name or not second_line:
                 self.log.emit('InfoWriter.append_shot_log: missing fields; skipping')
                 return
             try:
-                os.makedirs(outdir, exist_ok=True)
+                os.makedirs(shot_log_dir, exist_ok=True)
             except Exception:
                 pass
-            shot_log_path = os.path.join(outdir, 'SHOT_LOG.txt')
-            line = second_line + '\t' + os.path.join(outdir, info_name)
+            shot_log_path = os.path.join(shot_log_dir, 'SHOT_LOG.txt')
+            # reference the info file by absolute path so SHOT_LOG points to the correct file
+            info_ref = os.path.abspath(os.path.join(outdir, info_name))
+            line = second_line + '\t' + info_ref
             try:
                 with open(shot_log_path, 'a', encoding='utf-8') as shf:
                     shf.write(line + '\n')
@@ -268,8 +272,16 @@ class InfoWriter(QtCore.QObject):
                 # Always update the SHOT_LOG located in the same outdir (for bursts
                 # this should be the burst relative folder). There will be a single
                 # SHOT_LOG.txt per outdir and we append one line per Info write.
-                shot_log_path = os.path.join(outdir, 'SHOT_LOG.txt')
-                shot_log_line = '\t'.join(second) + '\t' + os.path.join(outdir, info_name)
+                # write SHOT_LOG into shot_log_dir when provided, otherwise outdir
+                shot_log_dir = str(payload.get('shot_log_dir', '') or '').strip() or outdir
+                try:
+                    os.makedirs(shot_log_dir, exist_ok=True)
+                except Exception:
+                    pass
+                shot_log_path = os.path.join(shot_log_dir, 'SHOT_LOG.txt')
+                # reference the info file by absolute path so SHOT_LOG points to the correct file
+                info_ref = os.path.abspath(info_full)
+                shot_log_line = '\t'.join(second) + '\t' + info_ref
                 with open(shot_log_path, 'a', encoding='utf-8') as shf:
                     shf.write(shot_log_line + '\n')
                 self.log.emit(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
