@@ -97,6 +97,24 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         self.overall_controls = SavingPanel()
         self.fire_panel    = FireControlsPanel()
+        # Ensure burst relative folder field is only editable in Burst mode
+        try:
+            # connect FireControlsPanel mode changes to enable/disable overall_controls.burst_edit
+            def _on_mode_changed(mode: str):
+                try:
+                    be = getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'burst_edit', None)
+                    if be is not None:
+                        be.setEnabled(mode == 'burst')
+                except Exception:
+                    pass
+            try:
+                self.fire_panel.request_mode.connect(_on_mode_changed)
+                # initialize state according to current panel mode
+                _on_mode_changed(getattr(self.fire_panel, '_current_mode', 'continuous'))
+            except Exception:
+                pass
+        except Exception:
+            pass
         # -- Shot counter persistence --
         try:
             base_dir = os.path.dirname(os.path.abspath(__file__))
