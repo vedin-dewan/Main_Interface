@@ -749,18 +749,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         shots = int(self.fire_panel.spin_shots.value()) if getattr(self.fire_panel, 'spin_shots', None) else getattr(self.fire_io, '_num_shots', 1)
                     except Exception:
                         shots = getattr(self.fire_io, '_num_shots', 1) if getattr(self, 'fire_io', None) else 1
-                    est_shot_ms = 0
+                    # compute a shorter, conservative wait: shots/10 seconds + camera buffer
                     try:
-                        cfg = getattr(self, 'fire_io', None).cfg
-                        est_shot_ms = int(shots) * int(getattr(cfg, 'pulse_ms', 0) + getattr(cfg, 'gap_ms', 0))
+                        # shots/10 seconds -> convert to ms
+                        est_shot_ms = int((float(shots) / 10.0) * 1000.0)
                     except Exception:
-                        # fallback: assume 100 ms per shot if we have no timing info
-                        try:
-                            est_shot_ms = int(shots) * 100
-                        except Exception:
-                            est_shot_ms = 0
-                    # total timeout = expected shot emission time + camera buffer + small margin
-                    timeout_ms = int(camera_buffer_ms + est_shot_ms + 500)
+                        est_shot_ms = 0
+                    # total timeout = estimated shot period + camera buffer
+                    timeout_ms = int(camera_buffer_ms + est_shot_ms)
                     poll_ms = int(getattr(self, '_rename_poll_ms', 200)) if getattr(self, '_rename_poll_ms', None) is not None else 200
                     stable_s = float(getattr(self, '_rename_stable_time', 0.3)) if getattr(self, '_rename_stable_time', None) is not None else 0.3
                     # perform burst save (blocking poll similar to single-shot rename)
