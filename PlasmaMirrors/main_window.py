@@ -187,6 +187,25 @@ class MainWindow(QtWidgets.QMainWindow):
             self._pm_auto = PMAutoManager(getattr(self, 'pm_panel', None), getattr(self, 'part1', None).rows if getattr(self, 'part1', None) is not None else [], logger=getattr(self, 'status_panel', None).append_line)
         except Exception:
             self._pm_auto = None
+        # alignment quick-toggle mappings: addr -> on_position (float)
+        # maintain separate mappings for PG and HeNe groups
+        self._alignment_pg_onpos = {}
+        self._alignment_hene_onpos = {}
+        # connect overall_controls alignment switch signals if available
+        try:
+            if getattr(self, 'overall_controls', None):
+                try:
+                    if getattr(self.overall_controls, 'alignment_pg_switch_requested', None) is not None:
+                        self.overall_controls.alignment_pg_switch_requested.connect(self._on_alignment_pg_switch_requested)
+                except Exception:
+                    pass
+                try:
+                    if getattr(self.overall_controls, 'alignment_hene_switch_requested', None) is not None:
+                        self.overall_controls.alignment_hene_switch_requested.connect(self._on_alignment_hene_switch_requested)
+                except Exception:
+                    pass
+        except Exception:
+            pass
         
         # --- Center layout: 2x3 grid ---------------------------------
         central = QtWidgets.QWidget()
@@ -1519,6 +1538,54 @@ class MainWindow(QtWidgets.QMainWindow):
                         pass
             except Exception:
                 pass
+            # If this address is configured for alignment quick toggles, update its indicator light
+            try:
+                # check PG mapping first
+                pg_on = None
+                try:
+                    pg_on = self._alignment_pg_onpos.get(int(address), None)
+                except Exception:
+                    pg_on = None
+                if pg_on is not None:
+                    try:
+                        if abs(float(final_pos) - float(pg_on)) <= 1e-4:
+                            try:
+                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_pg_light_state', None):
+                                    self.overall_controls.set_alignment_pg_light_state(True)
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_pg_light_state', None):
+                                    self.overall_controls.set_alignment_pg_light_state(False)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                # check HeNe mapping
+                hene_on = None
+                try:
+                    hene_on = self._alignment_hene_onpos.get(int(address), None)
+                except Exception:
+                    hene_on = None
+                if hene_on is not None:
+                    try:
+                        if abs(float(final_pos) - float(hene_on)) <= 1e-4:
+                            try:
+                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_hene_light_state', None):
+                                    self.overall_controls.set_alignment_hene_light_state(True)
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                if getattr(self, 'overall_controls', None) and getattr(self.overall_controls, 'set_alignment_hene_light_state', None):
+                                    self.overall_controls.set_alignment_hene_light_state(False)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         except Exception as e:
             # Log unexpected handler exceptions but keep going — important so sequences don't stall
             try:
@@ -2008,6 +2075,88 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             try: self.status_panel.append_line(f"Failed to handle PM bypass click: {e}")
             except Exception: pass
+
+    @QtCore.pyqtSlot(int, float, bool)
+    def _on_alignment_switch_requested(self, address: int, target: float, on: bool):
+        # Generic wrapper kept for compatibility; schedule the move only
+        try:
+            try:
+                unit = self.part1.rows[address - 1].info.unit
+            except Exception:
+                unit = 'mm'
+            try:
+                self.status_panel.append_line(f"Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
+            except Exception:
+                pass
+            try:
+                self.req_abs.emit(int(address), float(target), unit)
+            except Exception:
+                try:
+                    QtCore.QMetaObject.invokeMethod(self.stage, 'move_absolute', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, int(address)), QtCore.Q_ARG(float, float(target)), QtCore.Q_ARG(str, unit))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    @QtCore.pyqtSlot(int, float, bool)
+    def _on_alignment_pg_switch_requested(self, address: int, target: float, on: bool):
+        try:
+            if on:
+                self._alignment_pg_onpos[int(address)] = float(target)
+            else:
+                try:
+                    if int(address) in self._alignment_pg_onpos:
+                        del self._alignment_pg_onpos[int(address)]
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # reuse generic scheduling
+        try:
+            unit = self.part1.rows[address - 1].info.unit
+        except Exception:
+            unit = 'mm'
+        try:
+            self.status_panel.append_line(f"PG Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
+        except Exception:
+            pass
+        try:
+            self.req_abs.emit(int(address), float(target), unit)
+        except Exception:
+            try:
+                QtCore.QMetaObject.invokeMethod(self.stage, 'move_absolute', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, int(address)), QtCore.Q_ARG(float, float(target)), QtCore.Q_ARG(str, unit))
+            except Exception:
+                pass
+
+    @QtCore.pyqtSlot(int, float, bool)
+    def _on_alignment_hene_switch_requested(self, address: int, target: float, on: bool):
+        try:
+            if on:
+                self._alignment_hene_onpos[int(address)] = float(target)
+            else:
+                try:
+                    if int(address) in self._alignment_hene_onpos:
+                        del self._alignment_hene_onpos[int(address)]
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # reuse generic scheduling
+        try:
+            unit = self.part1.rows[address - 1].info.unit
+        except Exception:
+            unit = 'mm'
+        try:
+            self.status_panel.append_line(f"HeNe Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
+        except Exception:
+            pass
+        try:
+            self.req_abs.emit(int(address), float(target), unit)
+        except Exception:
+            try:
+                QtCore.QMetaObject.invokeMethod(self.stage, 'move_absolute', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(int, int(address)), QtCore.Q_ARG(float, float(target)), QtCore.Q_ARG(str, unit))
+            except Exception:
+                pass
 
     def closeEvent(self, a0: QtGui.QCloseEvent | None) -> None:
         try:
