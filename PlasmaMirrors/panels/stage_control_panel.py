@@ -589,6 +589,32 @@ class StageControlPanel(QtWidgets.QWidget):
             except Exception:
                 pass
 
+        # If selection changes externally (e.g. user clicked elsewhere) and becomes empty,
+        # restore the previously-highlighted Select button style.
+        def _on_table_selection_changed(selected, deselected):
+            try:
+                # if any rows remain selected, do nothing
+                if table.selectionModel().selectedRows():
+                    return
+                # no rows selected -> restore prev button
+                if prev_btn['btn'] is not None:
+                    try:
+                        orig = prev_btn['btn'].property('orig_style') or ''
+                        prev_btn['btn'].setStyleSheet(orig)
+                    except Exception:
+                        try:
+                            prev_btn['btn'].setStyleSheet('')
+                        except Exception:
+                            pass
+                    prev_btn['btn'] = None
+            except Exception:
+                pass
+
+        try:
+            table.selectionModel().selectionChanged.connect(_on_table_selection_changed)
+        except Exception:
+            pass
+
         def load_preset_to_table(preset_name: str):
             table.setRowCount(0)
             payload = data.get(preset_name, {})
