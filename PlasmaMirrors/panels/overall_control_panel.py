@@ -47,19 +47,21 @@ class SavingPanel(QtWidgets.QGroupBox):
         self.alignment_pg_label.setStyleSheet("font-weight:600")
         self.alignment_pg_light = RoundLight(diameter=16, clickable=False)
         self.alignment_pg_stage_spin = QtWidgets.QSpinBox()
-        self.alignment_pg_stage_spin.setRange(0, 999)
-        self.alignment_pg_stage_spin.setFixedWidth(64)
+        # Stage index only needs up to two digits
+        self.alignment_pg_stage_spin.setRange(0, 99)
+        self.alignment_pg_stage_spin.setFixedWidth(44)
         self.alignment_pg_stage_spin.setToolTip('Stage number (address) for PG alignment quick toggle')
         self.alignment_pg_off_spin = QtWidgets.QDoubleSpinBox()
-        self.alignment_pg_off_spin.setRange(-1e6, 1e6)
+        # Positions: three digits before decimal, three after (e.g. 999.999)
+        self.alignment_pg_off_spin.setRange(-999.999, 999.999)
         self.alignment_pg_off_spin.setDecimals(3)
-        self.alignment_pg_off_spin.setFixedWidth(90)
+        self.alignment_pg_off_spin.setFixedWidth(84)
         self.alignment_pg_off_spin.setToolTip('Absolute position to move to when PG OFF pressed')
 
         self.alignment_pg_on_spin = QtWidgets.QDoubleSpinBox()
-        self.alignment_pg_on_spin.setRange(-1e6, 1e6)
+        self.alignment_pg_on_spin.setRange(-999.999, 999.999)
         self.alignment_pg_on_spin.setDecimals(3)
-        self.alignment_pg_on_spin.setFixedWidth(90)
+        self.alignment_pg_on_spin.setFixedWidth(84)
         self.alignment_pg_on_spin.setToolTip('Absolute position to move to when PG ON pressed')
 
         self.alignment_pg_btn_on = QtWidgets.QPushButton('ON')
@@ -68,23 +70,24 @@ class SavingPanel(QtWidgets.QGroupBox):
         self.alignment_pg_btn_off.setFixedWidth(50)
 
         # HeNe group widgets
-        self.alignment_hene_label = QtWidgets.QLabel("HeNe Alignement")
+        self.alignment_hene_label = QtWidgets.QLabel("HeNe Alignment")
         self.alignment_hene_label.setStyleSheet("font-weight:600")
         self.alignment_hene_light = RoundLight(diameter=16, clickable=False)
         self.alignment_hene_stage_spin = QtWidgets.QSpinBox()
-        self.alignment_hene_stage_spin.setRange(0, 999)
-        self.alignment_hene_stage_spin.setFixedWidth(64)
+        # Stage index only needs up to two digits
+        self.alignment_hene_stage_spin.setRange(0, 99)
+        self.alignment_hene_stage_spin.setFixedWidth(44)
         self.alignment_hene_stage_spin.setToolTip('Stage number (address) for HeNe alignment quick toggle')
         self.alignment_hene_off_spin = QtWidgets.QDoubleSpinBox()
-        self.alignment_hene_off_spin.setRange(-1e6, 1e6)
+        self.alignment_hene_off_spin.setRange(-999.999, 999.999)
         self.alignment_hene_off_spin.setDecimals(3)
-        self.alignment_hene_off_spin.setFixedWidth(90)
+        self.alignment_hene_off_spin.setFixedWidth(84)
         self.alignment_hene_off_spin.setToolTip('Absolute position to move to when HeNe OFF pressed')
 
         self.alignment_hene_on_spin = QtWidgets.QDoubleSpinBox()
-        self.alignment_hene_on_spin.setRange(-1e6, 1e6)
+        self.alignment_hene_on_spin.setRange(-999.999, 999.999)
         self.alignment_hene_on_spin.setDecimals(3)
-        self.alignment_hene_on_spin.setFixedWidth(90)
+        self.alignment_hene_on_spin.setFixedWidth(84)
         self.alignment_hene_on_spin.setToolTip('Absolute position to move to when HeNe ON pressed')
 
         self.alignment_hene_btn_on = QtWidgets.QPushButton('ON')
@@ -100,6 +103,7 @@ class SavingPanel(QtWidgets.QGroupBox):
         pg_row.addWidget(self.alignment_pg_off_spin)
         pg_row.addWidget(self.alignment_pg_on_spin)
         pg_row.addWidget(self.alignment_pg_btn_on)
+        pg_row.addSpacing(8)
         pg_row.addWidget(self.alignment_pg_btn_off)
         pg_row.addStretch(1)
 
@@ -111,10 +115,13 @@ class SavingPanel(QtWidgets.QGroupBox):
         hene_row.addWidget(self.alignment_hene_off_spin)
         hene_row.addWidget(self.alignment_hene_on_spin)
         hene_row.addWidget(self.alignment_hene_btn_on)
+        hene_row.addSpacing(8)
         hene_row.addWidget(self.alignment_hene_btn_off)
         hene_row.addStretch(1)
 
         # place headings and rows in the grid: PG group first, HeNe group below it
+        # increase spacing above these rows so they don't feel cramped under the Burst Save field
+        layout.setRowMinimumHeight(3, 8)
         layout.addWidget(self.alignment_pg_label, 3, 0)
         layout.addLayout(pg_row, 4, 0, 1, 2)
 
