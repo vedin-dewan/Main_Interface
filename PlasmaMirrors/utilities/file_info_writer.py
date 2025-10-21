@@ -249,7 +249,12 @@ class InfoWriter(QtCore.QObject):
 
             # write info file
             try:
-                info_name = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_Info.txt"
+                # If payload indicates burst mode, write a single Info file named
+                # {Experiment}_Burst_Info.txt inside the burst folder (outdir).
+                if payload.get('burst_shots', None) is not None:
+                    info_name = f"{exp}_Burst_Info.txt"
+                else:
+                    info_name = f"{exp}_Shot{shotnum:05d}_{date_s}_{time_s}_Info.txt"
                 info_full = os.path.join(outdir, info_name)
                 with open(info_full, 'w', encoding='utf-8') as fh:
                     for ln in info_lines:
@@ -260,6 +265,9 @@ class InfoWriter(QtCore.QObject):
 
             # append SHOT_LOG
             try:
+                # Always update the SHOT_LOG located in the same outdir (for bursts
+                # this should be the burst relative folder). There will be a single
+                # SHOT_LOG.txt per outdir and we append one line per Info write.
                 shot_log_path = os.path.join(outdir, 'SHOT_LOG.txt')
                 shot_log_line = '\t'.join(second) + '\t' + os.path.join(outdir, info_name)
                 with open(shot_log_path, 'a', encoding='utf-8') as shf:
