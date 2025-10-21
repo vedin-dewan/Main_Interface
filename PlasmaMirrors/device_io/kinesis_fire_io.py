@@ -123,7 +123,7 @@ class KinesisFireIO(QtCore.QObject):
             self.dev.EnableDevice()
             time.sleep(0.1)
             # Default safe state
-            self._set_mode_internal("manual")
+            self._set_mode_internal("triggered")
             if self.cfg.start_enabled:
                 self._set_shutter_on()
             else:
