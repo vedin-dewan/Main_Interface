@@ -529,11 +529,13 @@ class StageControlPanel(QtWidgets.QWidget):
             pass
         dlg_layout.addWidget(table)
 
-        # Helper buttons: add, remove (Move Up/Down removed)
+        # Helper buttons: add stage, remove selected, create new preset, delete preset
         btn_row = QtWidgets.QHBoxLayout()
         btn_add = QtWidgets.QPushButton("Add Stage")
         btn_remove = QtWidgets.QPushButton("Remove Selected")
-        btn_row.addWidget(btn_add); btn_row.addWidget(btn_remove)
+        btn_new_preset = QtWidgets.QPushButton("New Preset")
+        btn_delete_preset = QtWidgets.QPushButton("Delete Preset")
+        btn_row.addWidget(btn_add); btn_row.addWidget(btn_remove); btn_row.addWidget(btn_new_preset); btn_row.addWidget(btn_delete_preset)
         dlg_layout.addLayout(btn_row)
 
         # Dialog buttons
@@ -632,6 +634,74 @@ class StageControlPanel(QtWidgets.QWidget):
             load_preset_to_table(name)
 
         preset_selector.currentIndexChanged.connect(on_preset_changed)
+
+        def _create_new_preset():
+            # Prompt for name
+            name, ok = QtWidgets.QInputDialog.getText(dialog, "New Preset", "Preset name:")
+            if not ok or not name:
+                return
+            name = name.strip()
+            if not name:
+                return
+            # Create payload and write back to file
+            if name in data:
+                QtWidgets.QMessageBox.warning(dialog, "Exists", f"Preset '{name}' already exists")
+                return
+            now_iso = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            data[name] = { 'last_saved_time': now_iso, 'stages': [] }
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2)
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(dialog, "Error", f"Failed to create preset: {e}")
+                return
+            # update selector and load it
+            preset_selector.addItem(name)
+            idx = preset_selector.findText(name)
+            if idx >= 0:
+                preset_selector.setCurrentIndex(idx)
+                load_preset_to_table(name)
+
+        btn_new_preset.clicked.connect(_create_new_preset)
+
+        def _delete_preset():
+            # Confirm deletion
+            pname = preset_selector.currentText()
+            if not pname:
+                return
+            resp = QtWidgets.QMessageBox.question(dialog, "Delete Preset", f"Delete preset '{pname}'? This cannot be undone.", QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+            if resp != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+            # Remove from data and write file
+            try:
+                if pname in data:
+                    del data[pname]
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2)
+                else:
+                    QtWidgets.QMessageBox.warning(dialog, "Not found", f"Preset '{pname}' not found in file.")
+                    return
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(dialog, "Error", f"Failed to delete preset: {e}")
+                return
+            # Update selector: remove item and load next available preset (or clear table)
+            idx = preset_selector.currentIndex()
+            preset_selector.removeItem(idx)
+            presets_after = [preset_selector.itemText(i) for i in range(preset_selector.count())]
+            if presets_after:
+                # select nearest index
+                new_idx = min(idx, preset_selector.count()-1)
+                preset_selector.setCurrentIndex(new_idx)
+                load_preset_to_table(preset_selector.currentText())
+            else:
+                table.setRowCount(0)
+            # Refresh main UI saved presets
+            try:
+                self.load_saved_positions()
+            except Exception:
+                pass
+
+        btn_delete_preset.clicked.connect(_delete_preset)
 
         def add_stage():
             r = table.rowCount()
