@@ -299,10 +299,11 @@ def save_burst_files(
     stable_since = {}
 
     moved = []
-    # tokens for which we've already moved at least one stable file
-    done_tokens = set()
+    # per-token counters for multiple files per token
+    counters = {}
 
-    while time.time() < deadline and len(done_tokens) < len(toks_l):
+    # Continue polling until deadline; process any file that becomes stable
+    while time.time() < deadline:
         try:
             entries = [f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
         except Exception:
@@ -338,18 +339,17 @@ def save_burst_files(
                     if cur_size == last_size.get(full, -2) and cur_size >= 0:
                         if stable_since.get(full) is None:
                             stable_since[full] = now
+                            try: logger(f"Burst save: stability started for '{os.path.basename(full)}'")
+                            except Exception: pass
                         elif (now - stable_since[full]) >= stable_time:
-                            # Move the stable file immediately for this token if we haven't
-                            # already moved a file for this token.
-                            if i in done_tokens:
-                                # already handled this token
-                                continue
+                            # Move the stable file immediately for this token (allow multiple per token)
                             try:
-                                # Build a safe label and destination name
-                                counters_j = 0
+                                counters.setdefault(toks[i], 0)
+                                j = counters[toks[i]]
+                                counters[toks[i]] = j + 1
                                 base, ext = os.path.splitext(os.path.basename(full))
                                 safe_label = ''.join(ch for ch in toks[i] if ch.isalnum() or ch in ('-', '_')) or 'Token'
-                                newname = f"{experiment}_Burst_{safe_label}_{counters_j}{ext}"
+                                newname = f"{experiment}_Burst_{safe_label}_{j}{ext}"
                                 dest = os.path.join(burst_dir, newname)
                                 # if destination exists, make unique
                                 if os.path.exists(dest):
@@ -364,13 +364,22 @@ def save_burst_files(
                                     pass
                                 os.replace(full, dest)
                                 try:
+                                    # mark both original and dest as processed to avoid reprocessing
                                     processed_paths.add(dest)
+                                    processed_paths.add(full)
                                 except Exception:
                                     pass
+                                try: logger(f"Burst save: moved and marked processed: {os.path.basename(full)}")
+                                except Exception: pass
                                 try: logger(f"Burst saved: {os.path.basename(full)} -> {os.path.join(os.path.basename(burst_dir), os.path.basename(dest))}")
                                 except Exception: pass
                                 moved.append((full, dest))
-                                done_tokens.add(i)
+                                # remove from candidates to avoid reprocessing
+                                try:
+                                    if full in candidates.get(i, []):
+                                        candidates[i].remove(full)
+                                except Exception:
+                                    pass
                             except Exception as e:
                                 try: logger(f"Burst save: failed to move {full}: {e}")
                                 except Exception: pass
