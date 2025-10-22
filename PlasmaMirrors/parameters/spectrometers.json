@@ -1,10 +1,12 @@
 [
   {
     "name": "Visible",
-    "filename": "SPECTRO"
+    "filename": "SPECTRO",
+    "filters": ""
   },
   {
     "name": "XUV",
-    "filename": "XUV"
+    "filename": "XUV",
+    "filters": ""
   }
 ]

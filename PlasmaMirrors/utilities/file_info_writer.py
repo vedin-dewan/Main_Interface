@@ -224,8 +224,13 @@ class InfoWriter(QtCore.QObject):
                 ) for nm, p in renamed) if t in spec_by_token), key=lambda x: x[0]):
                     s = spec_by_token.get(token, {})
                     name = str(s.get('name','')).strip()
+                    filters = str(s.get('filters','')).strip()
                     label = f"{name}Spec" if name else f"{token}Spec"
-                    info_lines.append(f"{token} $\t{label} $\t\t{newfull}")
+                    # include filters column if present
+                    if filters:
+                        info_lines.append(f"{token} $\t{label} $\tFilters:{filters} $\t{newfull}")
+                    else:
+                        info_lines.append(f"{token} $\t{label} $\t\t{newfull}")
             except Exception:
                 # fallback: match by token substring
                 try:
@@ -236,8 +241,12 @@ class InfoWriter(QtCore.QObject):
                             if token and token.lower() in nb.lower():
                                 s = spec_by_token.get(token, {})
                                 name = str(s.get('name','')).strip()
+                                filters = str(s.get('filters','')).strip()
                                 label = f"{name}Spec" if name else f"{token}Spec"
-                                info_lines.append(f"{token} $\t{label} $\t\t{newf}")
+                                if filters:
+                                    info_lines.append(f"{token} $\t{label} $\tFilters:{filters} $\t{newf}")
+                                else:
+                                    info_lines.append(f"{token} $\t{label} $\t\t{newf}")
                                 break
                 except Exception:
                     pass

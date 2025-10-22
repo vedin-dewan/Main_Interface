@@ -70,7 +70,27 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         # Table: Name | Purpose | Filters | Serial
         self.cameras_table = QtWidgets.QTableWidget(0, 4)
         self.cameras_table.setHorizontalHeaderLabels(['Name', 'Purpose', 'Filters', 'Serial'])
-        self.cameras_table.horizontalHeader().setStretchLastSection(True)
+        # Configure header resize modes so Filters (col 2) is the flexible wide column
+        header = self.cameras_table.horizontalHeader()
+        try:
+            # Make all columns fixed so typing long values won't auto-resize the table.
+            # Choose sensible fixed widths matching the desired layout from the screenshot.
+            header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Fixed)
+            # Set explicit widths (pixels): Name | Purpose | Filters | Serial
+            # Narrow Name and Purpose so the full row typically fits in a narrower panel
+            self.cameras_table.setColumnWidth(0, 100)
+            self.cameras_table.setColumnWidth(1, 140)
+            self.cameras_table.setColumnWidth(2, 315)
+            self.cameras_table.setColumnWidth(3, 80)
+        except Exception:
+            # If fixed sizing isn't supported, fall back to stretch-last behaviour
+            try:
+                self.cameras_table.horizontalHeader().setStretchLastSection(True)
+            except Exception:
+                pass
         self.cameras_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.cameras_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked | QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed)
         # Improve readability: alternating row colors, clearer header and selection
@@ -107,13 +127,24 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         # Visible spectrometer filename
         self.spec_vis_edit = QtWidgets.QLineEdit()
         spec_layout.addRow("Visible spectrometer filename", self.spec_vis_edit)
+        # Visible spectrometer filters (text label, e.g. filter names) — use QLineEdit like filename
+        self.spec_vis_filters = QtWidgets.QLineEdit()
+        self.spec_vis_filters.setFixedWidth(220)
+        spec_layout.addRow("Visible spectrometer filters", self.spec_vis_filters)
+
         # XUV spectrometer filename
         self.spec_xuv_edit = QtWidgets.QLineEdit()
         spec_layout.addRow("XUV spectrometer filename", self.spec_xuv_edit)
+        # XUV spectrometer filters (text)
+        self.spec_xuv_filters = QtWidgets.QLineEdit()
+        self.spec_xuv_filters.setFixedWidth(220)
+        spec_layout.addRow("XUV spectrometer filters", self.spec_xuv_filters)
 
         # connect edits to save handlers
         self.spec_vis_edit.editingFinished.connect(self._on_spec_changed)
         self.spec_xuv_edit.editingFinished.connect(self._on_spec_changed)
+        self.spec_vis_filters.editingFinished.connect(self._on_spec_changed)
+        self.spec_xuv_filters.editingFinished.connect(self._on_spec_changed)
 
         # -- build stages tab layout --
         s_layout = QtWidgets.QHBoxLayout(self.tab_stages)
@@ -380,31 +411,51 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         self._spectrometers = specs
         vis = ''
         xuv = ''
+        vis_filters = ''
+        xuv_filters = ''
         try:
             if len(specs) > 0:
                 vis = str(specs[0].get('filename', ''))
+                vis_filters = specs[0].get('filters', '') or ''
             if len(specs) > 1:
                 xuv = str(specs[1].get('filename', ''))
+                xuv_filters = specs[1].get('filters', '') or ''
         except Exception:
             pass
         try:
             self.spec_vis_edit.blockSignals(True)
             self.spec_xuv_edit.blockSignals(True)
+            self.spec_vis_filters.blockSignals(True)
+            self.spec_xuv_filters.blockSignals(True)
             self.spec_vis_edit.setText(vis)
             self.spec_xuv_edit.setText(xuv)
+            try:
+                self.spec_vis_filters.setText(str(vis_filters))
+            except Exception:
+                pass
+            try:
+                self.spec_xuv_filters.setText(str(xuv_filters))
+            except Exception:
+                pass
         finally:
             try: self.spec_vis_edit.blockSignals(False)
             except Exception: pass
             try: self.spec_xuv_edit.blockSignals(False)
+            except Exception: pass
+            try: self.spec_vis_filters.blockSignals(False)
+            except Exception: pass
+            try: self.spec_xuv_filters.blockSignals(False)
             except Exception: pass
 
     def _save_spectrometers(self):
         try:
             vis = self.spec_vis_edit.text() if self.spec_vis_edit else ''
             xuv = self.spec_xuv_edit.text() if self.spec_xuv_edit else ''
+            vis_filters = self.spec_vis_filters.text() if getattr(self, 'spec_vis_filters', None) is not None else ''
+            xuv_filters = self.spec_xuv_filters.text() if getattr(self, 'spec_xuv_filters', None) is not None else ''
             out = []
-            out.append({'name': 'Visible', 'filename': vis})
-            out.append({'name': 'XUV', 'filename': xuv})
+            out.append({'name': 'Visible', 'filename': vis, 'filters': vis_filters})
+            out.append({'name': 'XUV', 'filename': xuv, 'filters': xuv_filters})
             with open(self.spectrometers_file, 'w', encoding='utf-8') as f:
                 json.dump(out, f, indent=2)
             self._spectrometers = out
