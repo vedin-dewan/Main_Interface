@@ -945,6 +945,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Build map of stage identifier -> current position for only auto-enabled groups
             pos_map = {}
+            # also build a mapping from stage address -> list of PM identifiers for fallback mapping
+            addr_to_ids = {}
             for mg_i, mg in auto_enabled_groups:
                 try:
                     if getattr(mg, 'row_rx', None) is not None:
@@ -952,18 +954,36 @@ class MainWindow(QtWidgets.QMainWindow):
                         # RX axis may be labeled R (rotation) or X (linear layouts); provide both aliases
                         pos_map[f'PM{mg_i}R'] = val
                         pos_map[f'PM{mg_i}X'] = val
+                        try:
+                            addr = int(mg.row_rx.stage_num.value())
+                            if addr > 0:
+                                addr_to_ids.setdefault(addr, []).extend([f'PM{mg_i}R', f'PM{mg_i}X'])
+                        except Exception:
+                            pass
                 except Exception:
                     pass
                 try:
                     if getattr(mg, 'row_y', None) is not None:
                         val = float(mg.row_y.get_current())
                         pos_map[f'PM{mg_i}Y'] = val
+                        try:
+                            addr = int(mg.row_y.stage_num.value())
+                            if addr > 0:
+                                addr_to_ids.setdefault(addr, []).append(f'PM{mg_i}Y')
+                        except Exception:
+                            pass
                 except Exception:
                     pass
                 try:
                     if getattr(mg, 'row_z', None) is not None:
                         val = float(mg.row_z.get_current())
                         pos_map[f'PM{mg_i}Z'] = val
+                        try:
+                            addr = int(mg.row_z.stage_num.value())
+                            if addr > 0:
+                                addr_to_ids.setdefault(addr, []).append(f'PM{mg_i}Z')
+                        except Exception:
+                            pass
                 except Exception:
                     pass
                 try:
@@ -972,17 +992,35 @@ class MainWindow(QtWidgets.QMainWindow):
                         # SD axis is sometimes referred to as D in some files; provide both
                         pos_map[f'PM{mg_i}SD'] = val
                         pos_map[f'PM{mg_i}D'] = val
+                        try:
+                            addr = int(mg.row_sd.stage_num.value())
+                            if addr > 0:
+                                addr_to_ids.setdefault(addr, []).extend([f'PM{mg_i}SD', f'PM{mg_i}D'])
+                        except Exception:
+                            pass
                 except Exception:
                     pass
 
-            # fallback: also include any relevant MotorStatusPanel readings (by short name)
+            # fallback: include part1 MotorStatusPanel readings only for addresses that belong to auto-enabled PM groups
             try:
                 part1_rows = getattr(self.part1, 'rows', []) if getattr(self, 'part1', None) is not None else []
-                for r in part1_rows:
+                for addr, ids in addr_to_ids.items():
                     try:
-                        key = getattr(r.info, 'short', None)
-                        if key:
-                            pos_map[str(key)] = float(getattr(r.info, 'eng_value', 0.0))
+                        if addr <= 0 or addr > len(part1_rows):
+                            continue
+                        row = part1_rows[addr - 1]
+                        eng = float(getattr(row.info, 'eng_value', 0.0))
+                        # populate any missing identifiers for this address
+                        for idn in ids:
+                            if idn not in pos_map:
+                                pos_map[str(idn)] = eng
+                        # also map by MotorInfo.short if present and not already set
+                        try:
+                            key = getattr(row.info, 'short', None)
+                            if key and key not in pos_map:
+                                pos_map[str(key)] = eng
+                        except Exception:
+                            pass
                     except Exception:
                         pass
             except Exception:
