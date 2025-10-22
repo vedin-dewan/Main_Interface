@@ -1,19 +1,19 @@
 {
   "pm1": {
     "name": "Plasma Mirror 1",
-    "auto": false,
+    "auto": true,
     "dist": 0.75,
     "target_type": 0,
     "bypass": false,
     "rows": {
       "rx": {
         "stage_num": 1,
-        "min": 331.0,
-        "max": 359.0,
+        "min": 31.0,
+        "max": 60.0,
         "zero": 30.0,
         "mo": 0.0,
-        "cur": 3.0,
-        "dir": 1
+        "cur": 33.5,
+        "dir": 0
       },
       "y": {
         "stage_num": 2,
@@ -21,7 +21,7 @@
         "max": 183.0,
         "zero": 192.75,
         "mo": 0.0,
-        "cur": 0.0,
+        "cur": 151.0,
         "dir": 0
       },
       "z": {
@@ -30,7 +30,7 @@
         "max": 50.0,
         "zero": 36.0,
         "mo": 0.0,
-        "cur": 50.8,
+        "cur": 36.0,
         "dir": null
       },
       "sd": {
@@ -39,7 +39,7 @@
         "max": 100.0,
         "zero": 0.0,
         "mo": 0.0,
-        "cur": 2.0,
+        "cur": 101.6,
         "dir": null
       }
     }
@@ -91,7 +91,7 @@
   },
   "pm3": {
     "name": "Plasma Mirror 3",
-    "auto": true,
+    "auto": false,
     "dist": 0.75,
     "target_type": 1,
     "bypass": false,
@@ -102,7 +102,7 @@
         "max": 75.0,
         "zero": 28.5,
         "mo": 69.89,
-        "cur": 35.75,
+        "cur": 28.5,
         "dir": 0
       },
       "y": {
@@ -111,8 +111,8 @@
         "max": 150.0,
         "zero": 110.12,
         "mo": 96.818,
-        "cur": 131.5,
-        "dir": 1
+        "cur": 110.12,
+        "dir": 0
       },
       "z": {
         "stage_num": 6,
@@ -134,5 +134,5 @@
       }
     }
   },
-  "saved_time": "2025-10-21T21:23:06"
+  "saved_time": "2025-10-22T16:39:35"
 }
