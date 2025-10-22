@@ -784,7 +784,20 @@ class StageControlPanel(QtWidgets.QWidget):
 
     def _open_scan_dialog(self):
         """Open a dialog to configure a stage scan: select stage, min, max, step."""
+        # If dialog already exists, bring it to front
+        try:
+            if getattr(self, '_scan_dialog', None) is not None and self._scan_dialog.isVisible():
+                try:
+                    self._scan_dialog.raise_()
+                    self._scan_dialog.activateWindow()
+                    return
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         d = QtWidgets.QDialog(self)
+        self._scan_dialog = d
         d.setWindowTitle("Scan Stage")
         layout = QtWidgets.QFormLayout(d)
 
@@ -805,32 +818,24 @@ class StageControlPanel(QtWidgets.QWidget):
         # Buttons
         btn_row = QtWidgets.QHBoxLayout()
         btn_scan = QtWidgets.QPushButton("Scan")
-        btn_cancel = QtWidgets.QPushButton("Cancel")
+        btn_cancel = QtWidgets.QPushButton("Close")
         btn_row.addWidget(btn_scan); btn_row.addWidget(btn_cancel)
         layout.addRow(btn_row)
 
+        # Progress bar (shows completed steps / total)
+        prog = QtWidgets.QProgressBar()
+        prog.setMinimum(0)
+        prog.setMaximum(1)
+        prog.setValue(0)
+        prog.setTextVisible(True)
+        self._scan_progress = prog
+        layout.addRow("Progress:", prog)
+
         def on_cancel():
-            d.reject()
-
-        # Progress bar (starts at 0 / not visible until a scan begins)
-        progress = QtWidgets.QProgressBar()
-        progress.setMinimum(0)
-        progress.setValue(0)
-        progress.setVisible(False)
-        # Percentage label next to progress bar
-        pct_label = QtWidgets.QLabel("0%")
-        pct_label.setFixedWidth(48)
-        pct_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        pct_label.setVisible(False)
-        hprogress = QtWidgets.QHBoxLayout()
-        hprogress.addWidget(progress)
-        hprogress.addWidget(pct_label)
-        layout.addRow("Progress:", hprogress)
-
-        # Stop button inside dialog
-        btn_stop = QtWidgets.QPushButton("Stop Scan")
-        btn_stop.setToolTip("Request stopping after current step finishes")
-        layout.addRow(btn_stop)
+            try:
+                d.reject()
+            except Exception:
+                pass
 
         def on_scan():
             try:
@@ -838,32 +843,45 @@ class StageControlPanel(QtWidgets.QWidget):
                 mn = float(min_sb.value())
                 mx = float(max_sb.value())
                 stp = float(step_sb.value())
-                params = { 'address': addr, 'min': mn, 'max': mx, 'step': stp, 'progress_widget': progress, 'progress_label': pct_label }
-                # show progress bar and percent label and keep dialog open while scanning
-                progress.setVisible(True)
-                pct_label.setVisible(True)
-                progress.setValue(0)
+                params = { 'address': addr, 'min': mn, 'max': mx, 'step': stp }
+                # emit request but keep dialog open so user can monitor progress
+                self.request_scan.emit(params)
+                # initialize progress bar
                 try:
-                    pct_label.setText('0%')
+                    total = 0
+                    # MainWindow will set total after computing positions; set to 0 here
+                    self.set_scan_progress(0, 0)
                 except Exception:
                     pass
-                self.request_scan.emit(params)
             except Exception:
                 pass
-            # DO NOT close dialog here; user should close manually when ready
-
-        def on_stop():
-            try:
-                self.request_stop_scan.emit()
-            except Exception:
-                pass
-
-        btn_stop.clicked.connect(on_stop)
-        btn_scan.clicked.connect(on_scan)
 
         btn_cancel.clicked.connect(on_cancel)
         btn_scan.clicked.connect(on_scan)
-        d.exec()
+        # show non-modal so it stays open (exec is modal); use show()
+        d.setModal(False)
+        d.show()
+
+    @QtCore.pyqtSlot(int, int)
+    def set_scan_progress(self, current: int, total: int):
+        """Update the scan progress bar in the open scan dialog.
+        current: number of completed steps (1-based)
+        total: total number of steps
+        """
+        try:
+            if getattr(self, '_scan_progress', None) is None:
+                return
+            pb = self._scan_progress
+            if total <= 0:
+                pb.setMaximum(1)
+                pb.setValue(0)
+                pb.setFormat('0/0')
+                return
+            pb.setMaximum(int(total))
+            pb.setValue(int(current))
+            pb.setFormat(f"{int(current)} / {int(total)}")
+        except Exception:
+            pass
 
     def _write_saved_positions_log(self, log_path: str, data: dict):
         """(Legacy) Full-write human-readable log. Kept as a fallback.
