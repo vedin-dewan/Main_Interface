@@ -821,6 +821,10 @@ class StageControlPanel(QtWidgets.QWidget):
         btn_stop = QtWidgets.QPushButton("Stop Scan")
         btn_stop.setToolTip("Request stopping an in-progress scan after the current step finishes")
         btn_cancel = QtWidgets.QPushButton("Close")
+        # keep references so other code (and MainWindow) can enable/disable them
+        self._scan_btn_scan = btn_scan
+        self._scan_btn_stop = btn_stop
+        self._scan_btn_close = btn_cancel
         btn_row.addWidget(btn_scan); btn_row.addWidget(btn_stop); btn_row.addWidget(btn_cancel)
         layout.addRow(btn_row)
 
@@ -835,6 +839,15 @@ class StageControlPanel(QtWidgets.QWidget):
 
         def on_cancel():
             try:
+                # If a scan is running, request a graceful stop before closing
+                try:
+                    if getattr(self, '_scan_running', False):
+                        try:
+                            self.request_stop_scan.emit()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 d.reject()
             except Exception:
                 pass
@@ -843,6 +856,12 @@ class StageControlPanel(QtWidgets.QWidget):
             try:
                 # emit request_stop_scan so MainWindow will set its stop flag
                 self.request_stop_scan.emit()
+                # disable Stop to avoid duplicate clicks; leave Scan disabled while stopping
+                try:
+                    if getattr(self, '_scan_btn_stop', None) is not None:
+                        self._scan_btn_stop.setEnabled(False)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -868,9 +887,33 @@ class StageControlPanel(QtWidgets.QWidget):
         btn_cancel.clicked.connect(on_cancel)
         btn_scan.clicked.connect(on_scan)
         btn_stop.clicked.connect(on_stop)
+        # default state: not running -> Scan enabled, Stop disabled
+        try:
+            self._scan_running = False
+            if getattr(self, '_scan_btn_scan', None) is not None:
+                self._scan_btn_scan.setEnabled(True)
+            if getattr(self, '_scan_btn_stop', None) is not None:
+                self._scan_btn_stop.setEnabled(False)
+        except Exception:
+            pass
         # show non-modal so it stays open (exec is modal); use show()
         d.setModal(False)
         d.show()
+
+    @QtCore.pyqtSlot(bool)
+    def set_scan_running(self, running: bool):
+        """Enable/disable Scan and Stop buttons from MainWindow.
+
+        running=True disables Scan and enables Stop. running=False enables Scan and disables Stop.
+        """
+        try:
+            self._scan_running = bool(running)
+            if getattr(self, '_scan_btn_scan', None) is not None:
+                self._scan_btn_scan.setEnabled(not self._scan_running)
+            if getattr(self, '_scan_btn_stop', None) is not None:
+                self._scan_btn_stop.setEnabled(bool(self._scan_running))
+        except Exception:
+            pass
 
     @QtCore.pyqtSlot(int, int)
     def set_scan_progress(self, current: int, total: int):

@@ -1005,31 +1005,34 @@ class MainWindow(QtWidgets.QMainWindow):
             # Move and when moved schedule post-auto buffer wait then fire
             def _after_move(success: bool = True):
                 try:
-                    # wait post-auto buffer
-                    try:
-                        buffer_ms = int(self.fire_panel.spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 500
-                    except Exception:
-                        buffer_ms = 500
-                    QtCore.QTimer.singleShot(buffer_ms, _do_fire)
+                    # Fire immediately after the move; post-auto buffer will be applied AFTER
+                    # the per-shot/burst processing completes (see _poll_fire_completion).
+                    _do_fire()
                 except Exception:
                     _do_fire()
 
             def _do_fire():
                 try:
-                    # Ensure single-shot mode
-                    try:
-                        if getattr(self.fire_panel, 'rb_single', None):
-                            self.fire_panel.rb_single.setChecked(True)
-                    except Exception:
-                        pass
                     # Trigger fire click (this will start per-shot sequence infrastructure)
                     try:
                         # call the UI-level fire handler on the main thread
                         QtCore.QTimer.singleShot(0, lambda: self._on_fire_clicked())
                     except Exception:
                         try:
-                            # fallback: ask the fire IO to fire one shot directly
-                            QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
+                            # fallback: ask the fire IO to perform the appropriate action
+                            # depending on the UI mode (burst vs single).
+                            mode = 'continuous'
+                            try:
+                                if getattr(self.fire_panel, 'rb_single', None) and self.fire_panel.rb_single.isChecked():
+                                    mode = 'single'
+                                elif getattr(self.fire_panel, 'rb_burst', None) and self.fire_panel.rb_burst.isChecked():
+                                    mode = 'burst'
+                            except Exception:
+                                mode = 'continuous'
+                            if mode == 'burst':
+                                QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire', QtCore.Qt.ConnectionType.QueuedConnection)
+                            else:
+                                QtCore.QMetaObject.invokeMethod(self.fire_io, 'fire_one_shot', QtCore.Qt.ConnectionType.QueuedConnection)
                         except Exception:
                             pass
                     # update progress (current completed = idx+1)
@@ -1098,8 +1101,24 @@ class MainWindow(QtWidgets.QMainWindow):
                         return
                 except Exception:
                     pass
-                idx['i'] += 1
-                QtCore.QTimer.singleShot(50, _do_next)
+                # apply post-auto buffer AFTER the fire and its post-processing completes
+                try:
+                    try:
+                        buffer_ms = int(self.fire_panel.spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 500
+                    except Exception:
+                        buffer_ms = 500
+
+                    def _next_after_buffer():
+                        try:
+                            idx['i'] += 1
+                        except Exception:
+                            idx['i'] = idx.get('i', 0) + 1
+                        QtCore.QTimer.singleShot(50, _do_next)
+
+                    QtCore.QTimer.singleShot(buffer_ms, _next_after_buffer)
+                except Exception:
+                    idx['i'] += 1
+                    QtCore.QTimer.singleShot(50, _do_next)
             except Exception:
                 idx['i'] += 1
                 QtCore.QTimer.singleShot(50, _do_next)
