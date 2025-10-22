@@ -971,6 +971,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 break
             p = next_p
 
+        # Grab optional progress widget (from the Scan dialog) and initialize it
+        progress = params.get('progress_widget', None)
+        progress_label = params.get('progress_label', None)
+        if progress is not None:
+            try:
+                progress.setMaximum(max(1, len(positions)))
+                progress.setValue(0)
+                progress.setVisible(True)
+            except Exception:
+                pass
+        if progress_label is not None:
+            try:
+                progress_label.setText('0%')
+                progress_label.setVisible(True)
+            except Exception:
+                pass
+
         # Run scan sequentially but without blocking the UI (use QTimer singleShot chain)
         idx = {'i': 0}
         # determine relative step sign: positive if scanning upward, negative if downward
@@ -984,6 +1001,17 @@ class MainWindow(QtWidgets.QMainWindow):
             if i >= len(positions):
                 try: self.status_panel.append_line('Scan complete')
                 except Exception: pass
+                # finalize progress bar and label
+                if progress is not None:
+                    try:
+                        progress.setValue(len(positions))
+                    except Exception:
+                        pass
+                if progress_label is not None:
+                    try:
+                        progress_label.setText('100%')
+                    except Exception:
+                        pass
                 return
             target = positions[i]
             try: self.status_panel.append_line(f"Scan: moving Addr {address} → {target:.6f} {unit}")
@@ -1077,12 +1105,47 @@ class MainWindow(QtWidgets.QMainWindow):
                             pass
                         try: self.status_panel.append_line('Scan stopped by user after current step')
                         except Exception: pass
+                        # update progress to reflect the completed step before stopping
+                        try:
+                            if progress is not None:
+                                progress.setValue(min(len(positions), idx['i']+1))
+                        except Exception:
+                            pass
+                        try:
+                            if progress_label is not None and len(positions) > 0:
+                                pct = int((min(len(positions), idx['i']+1) / len(positions)) * 100)
+                                progress_label.setText(f"{pct}%")
+                        except Exception:
+                            pass
                         return
+                except Exception:
+                    pass
+                # update progress to reflect the completed step
+                try:
+                    if progress is not None:
+                        progress.setValue(min(len(positions), idx['i']+1))
+                except Exception:
+                    pass
+                try:
+                    if progress_label is not None and len(positions) > 0:
+                        pct = int((min(len(positions), idx['i']+1) / len(positions)) * 100)
+                        progress_label.setText(f"{pct}%")
                 except Exception:
                     pass
                 idx['i'] += 1
                 QtCore.QTimer.singleShot(50, _do_next)
             except Exception:
+                try:
+                    if progress is not None:
+                        progress.setValue(min(len(positions), idx.get('i', 0)+1))
+                except Exception:
+                    pass
+                try:
+                    if progress_label is not None and len(positions) > 0:
+                        pct = int((min(len(positions), idx.get('i', 0)+1) / len(positions)) * 100)
+                        progress_label.setText(f"{pct}%")
+                except Exception:
+                    pass
                 idx['i'] += 1
                 QtCore.QTimer.singleShot(50, _do_next)
 

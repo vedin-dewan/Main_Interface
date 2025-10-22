@@ -195,14 +195,11 @@ class StageControlPanel(QtWidgets.QWidget):
         self.btn_home_all.clicked.connect(lambda: self.request_move_to_saved.emit("HOME ALL"))
         self.btn_scan_stage = QtWidgets.QPushButton("Scan Stage")
         self.btn_scan_stage.clicked.connect(self._open_scan_dialog)
-        self.btn_stop_scan = QtWidgets.QPushButton("Stop Scan")
-        self.btn_stop_scan.setToolTip("Request stopping an in-progress scan after the current step finishes")
         self.btn_stop_all   = QtWidgets.QPushButton("Stop All")
         # Clicking Stop All should request stopping of all stages and cancel queued moves
         self.btn_stop_all.clicked.connect(lambda: self.request_stop_all.emit())
         row2.addWidget(self.btn_home_all)
         row2.addWidget(self.btn_scan_stage)
-        row2.addWidget(self.btn_stop_scan)
         row2.addWidget(self.btn_stop_all)
 
         # Pack group
@@ -815,17 +812,54 @@ class StageControlPanel(QtWidgets.QWidget):
         def on_cancel():
             d.reject()
 
+        # Progress bar (starts at 0 / not visible until a scan begins)
+        progress = QtWidgets.QProgressBar()
+        progress.setMinimum(0)
+        progress.setValue(0)
+        progress.setVisible(False)
+        # Percentage label next to progress bar
+        pct_label = QtWidgets.QLabel("0%")
+        pct_label.setFixedWidth(48)
+        pct_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        pct_label.setVisible(False)
+        hprogress = QtWidgets.QHBoxLayout()
+        hprogress.addWidget(progress)
+        hprogress.addWidget(pct_label)
+        layout.addRow("Progress:", hprogress)
+
+        # Stop button inside dialog
+        btn_stop = QtWidgets.QPushButton("Stop Scan")
+        btn_stop.setToolTip("Request stopping after current step finishes")
+        layout.addRow(btn_stop)
+
         def on_scan():
             try:
                 addr = int(sel.currentData())
                 mn = float(min_sb.value())
                 mx = float(max_sb.value())
                 stp = float(step_sb.value())
-                params = { 'address': addr, 'min': mn, 'max': mx, 'step': stp }
+                params = { 'address': addr, 'min': mn, 'max': mx, 'step': stp, 'progress_widget': progress, 'progress_label': pct_label }
+                # show progress bar and percent label and keep dialog open while scanning
+                progress.setVisible(True)
+                pct_label.setVisible(True)
+                progress.setValue(0)
+                try:
+                    pct_label.setText('0%')
+                except Exception:
+                    pass
                 self.request_scan.emit(params)
             except Exception:
                 pass
-            d.accept()
+            # DO NOT close dialog here; user should close manually when ready
+
+        def on_stop():
+            try:
+                self.request_stop_scan.emit()
+            except Exception:
+                pass
+
+        btn_stop.clicked.connect(on_stop)
+        btn_scan.clicked.connect(on_scan)
 
         btn_cancel.clicked.connect(on_cancel)
         btn_scan.clicked.connect(on_scan)
