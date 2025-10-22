@@ -839,13 +839,10 @@ class StageControlPanel(QtWidgets.QWidget):
 
         def on_cancel():
             try:
-                # If a scan is running, request a graceful stop before closing
+                # Do not allow closing while a scan is running; Close button is disabled in that case.
                 try:
                     if getattr(self, '_scan_running', False):
-                        try:
-                            self.request_stop_scan.emit()
-                        except Exception:
-                            pass
+                        return
                 except Exception:
                     pass
                 d.reject()
@@ -860,6 +857,23 @@ class StageControlPanel(QtWidgets.QWidget):
                 try:
                     if getattr(self, '_scan_btn_stop', None) is not None:
                         self._scan_btn_stop.setEnabled(False)
+                except Exception:
+                    pass
+                # allow the user to close the dialog now that stop was requested
+                try:
+                    if getattr(self, '_scan_btn_close', None) is not None:
+                        self._scan_btn_close.setEnabled(True)
+                    # also re-enable window close button (titlebar X) if dialog present
+                    try:
+                        if getattr(self, '_scan_dialog', None) is not None:
+                            self._scan_dialog.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, True)
+                            # re-show to apply flag change
+                            try:
+                                self._scan_dialog.show()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
                 except Exception:
                     pass
             except Exception:
@@ -912,6 +926,25 @@ class StageControlPanel(QtWidgets.QWidget):
                 self._scan_btn_scan.setEnabled(not self._scan_running)
             if getattr(self, '_scan_btn_stop', None) is not None:
                 self._scan_btn_stop.setEnabled(bool(self._scan_running))
+        except Exception:
+            pass
+        # also enable/disable Close (Cancel) button and titlebar close while running
+        try:
+            if getattr(self, '_scan_btn_close', None) is not None:
+                self._scan_btn_close.setEnabled(not bool(self._scan_running))
+        except Exception:
+            pass
+        try:
+            if getattr(self, '_scan_dialog', None) is not None:
+                # hide titlebar close while running, show when not
+                try:
+                    self._scan_dialog.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, not bool(self._scan_running))
+                    try:
+                        self._scan_dialog.show()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
         except Exception:
             pass
 

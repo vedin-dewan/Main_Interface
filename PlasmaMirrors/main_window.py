@@ -1007,6 +1007,18 @@ class MainWindow(QtWidgets.QMainWindow):
         def _do_next():
             i = idx['i']
             if i >= len(positions):
+                try:
+                    # clear running UI state
+                    if getattr(self, 'part2', None) is not None and getattr(self.part2, 'set_scan_running', None) is not None:
+                        try:
+                            self.part2.set_scan_running(False)
+                        except Exception:
+                            try:
+                                QtCore.QMetaObject.invokeMethod(self.part2, 'set_scan_running', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(bool, False))
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
                 try: self.status_panel.append_line('Scan complete')
                 except Exception: pass
                 return
@@ -1048,6 +1060,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
             def _do_fire():
                 try:
+                    # Record when the fire was triggered and compute expected wait time for burst
+                    try:
+                        idx['fire_ts'] = int(time.time() * 1000)
+                        try:
+                            shots = int(self.fire_panel.spin_shots.value()) if getattr(self.fire_panel, 'spin_shots', None) is not None else (getattr(self.fire_io, '_num_shots', 1) if getattr(self, 'fire_io', None) is not None else 1)
+                        except Exception:
+                            shots = (getattr(self.fire_io, '_num_shots', 1) if getattr(self, 'fire_io', None) is not None else 1)
+                        try:
+                            camera_buffer_ms = int(getattr(self, '_rename_max_wait_ms', 5000))
+                        except Exception:
+                            camera_buffer_ms = 5000
+                        est_shot_ms = int((float(shots) / 10.0) * 1000.0)
+                        idx['expected_wait_ms'] = int(camera_buffer_ms + est_shot_ms)
+                    except Exception:
+                        try:
+                            idx['fire_ts'] = int(time.time() * 1000)
+                        except Exception:
+                            idx['fire_ts'] = 0
+                        idx['expected_wait_ms'] = int(getattr(self, '_rename_max_wait_ms', 5000))
                     # Trigger fire click (this will start per-shot sequence infrastructure)
                     try:
                         # call the UI-level fire handler on the main thread
@@ -1153,15 +1184,47 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     if idx.get('pre_buffered', False):
                         try:
-                            idx['pre_buffered'] = False
+                            # Ensure we wait at least expected_wait_ms from the time _do_fire triggered
+                            now_ms = int(time.time() * 1000)
+                            fired_ms = int(idx.get('fire_ts', 0) or 0)
+                            expected = int(idx.get('expected_wait_ms', 0) or 0)
+                            elapsed = max(0, now_ms - fired_ms)
+                            remaining = expected - elapsed
+                            if remaining > 0:
+                                def _after_remaining():
+                                    try:
+                                        idx['pre_buffered'] = False
+                                    except Exception:
+                                        pass
+                                    try:
+                                        idx['i'] += 1
+                                    except Exception:
+                                        idx['i'] = idx.get('i', 0) + 1
+                                    QtCore.QTimer.singleShot(50, _do_next)
+                                QtCore.QTimer.singleShot(max(50, int(remaining)), _after_remaining)
+                                return
+                            else:
+                                try:
+                                    idx['pre_buffered'] = False
+                                except Exception:
+                                    pass
+                                try:
+                                    idx['i'] += 1
+                                except Exception:
+                                    idx['i'] = idx.get('i', 0) + 1
+                                QtCore.QTimer.singleShot(50, _do_next)
+                                return
                         except Exception:
-                            pass
-                        try:
-                            idx['i'] += 1
-                        except Exception:
-                            idx['i'] = idx.get('i', 0) + 1
-                        QtCore.QTimer.singleShot(50, _do_next)
-                        return
+                            try:
+                                idx['pre_buffered'] = False
+                            except Exception:
+                                pass
+                            try:
+                                idx['i'] += 1
+                            except Exception:
+                                idx['i'] = idx.get('i', 0) + 1
+                            QtCore.QTimer.singleShot(50, _do_next)
+                            return
                 except Exception:
                     pass
 
