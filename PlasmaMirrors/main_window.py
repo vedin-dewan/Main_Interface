@@ -985,7 +985,19 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
         # Run scan sequentially but without blocking the UI (use QTimer singleShot chain)
-        idx = {'i': 0}
+        idx = {'i': 0, 'pre_buffered': False}
+        # mark UI as running
+        try:
+            if getattr(self, 'part2', None) is not None and getattr(self.part2, 'set_scan_running', None) is not None:
+                try:
+                    self.part2.set_scan_running(True)
+                except Exception:
+                    try:
+                        QtCore.QMetaObject.invokeMethod(self.part2, 'set_scan_running', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(bool, True))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         # determine relative step sign: positive if scanning upward, negative if downward
         try:
             step_signed = float(step) if float(mx) >= float(mn) else -abs(float(step))
@@ -1005,8 +1017,31 @@ class MainWindow(QtWidgets.QMainWindow):
             # Move and when moved schedule post-auto buffer wait then fire
             def _after_move(success: bool = True):
                 try:
-                    # Fire immediately after the move; post-auto buffer will be applied AFTER
-                    # the per-shot/burst processing completes (see _poll_fire_completion).
+                    # Decide whether to apply a pre-fire buffer (for burst mode) or fire immediately.
+                    try:
+                        buffer_ms = int(self.fire_panel.spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 500
+                    except Exception:
+                        buffer_ms = 500
+                    # If UI is in burst mode, wait buffer before firing; mark pre_buffered flag so poll logic knows
+                    burst_mode_ui = False
+                    try:
+                        if getattr(self.fire_panel, 'rb_burst', None) and self.fire_panel.rb_burst.isChecked():
+                            burst_mode_ui = True
+                    except Exception:
+                        burst_mode_ui = False
+                    if burst_mode_ui:
+                        try:
+                            # set flag then wait buffer then fire
+                            idx['pre_buffered'] = True
+                        except Exception:
+                            idx['pre_buffered'] = True
+                        QtCore.QTimer.singleShot(buffer_ms, _do_fire)
+                        return
+                    # otherwise fire immediately and handle post-buffer after completion
+                    try:
+                        idx['pre_buffered'] = False
+                    except Exception:
+                        pass
                     _do_fire()
                 except Exception:
                     _do_fire()
@@ -1098,10 +1133,39 @@ class MainWindow(QtWidgets.QMainWindow):
                             pass
                         try: self.status_panel.append_line('Scan stopped by user after current step')
                         except Exception: pass
+                        try:
+                            if getattr(self, 'part2', None) is not None and getattr(self.part2, 'set_scan_running', None) is not None:
+                                try:
+                                    self.part2.set_scan_running(False)
+                                except Exception:
+                                    try:
+                                        QtCore.QMetaObject.invokeMethod(self.part2, 'set_scan_running', QtCore.Qt.ConnectionType.QueuedConnection, QtCore.Q_ARG(bool, False))
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
                         return
                 except Exception:
                     pass
-                # apply post-auto buffer AFTER the fire and its post-processing completes
+                # If this step used a pre-fire buffer (burst flow), we already waited before firing.
+                # In that case, just increment and continue immediately; the next iteration will move and
+                # (for burst) apply the pre-fire buffer before firing again.
+                try:
+                    if idx.get('pre_buffered', False):
+                        try:
+                            idx['pre_buffered'] = False
+                        except Exception:
+                            pass
+                        try:
+                            idx['i'] += 1
+                        except Exception:
+                            idx['i'] = idx.get('i', 0) + 1
+                        QtCore.QTimer.singleShot(50, _do_next)
+                        return
+                except Exception:
+                    pass
+
+                # otherwise (non-pre-buffered flow, e.g., single-shot), apply post-auto buffer AFTER processing
                 try:
                     try:
                         buffer_ms = int(self.fire_panel.spin_post_auto.value()) if getattr(self, 'fire_panel', None) and getattr(self.fire_panel, 'spin_post_auto', None) else 500
