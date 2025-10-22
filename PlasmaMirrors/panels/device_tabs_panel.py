@@ -81,10 +81,10 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Fixed)
             # Set explicit widths (pixels): Name | Purpose | Filters | Serial
             # Narrow Name and Purpose so the full row typically fits in a narrower panel
-            self.cameras_table.setColumnWidth(0, 100)
-            self.cameras_table.setColumnWidth(1, 140)
-            self.cameras_table.setColumnWidth(2, 315)
-            self.cameras_table.setColumnWidth(3, 80)
+            self.cameras_table.setColumnWidth(0, 70)
+            self.cameras_table.setColumnWidth(1, 120)
+            self.cameras_table.setColumnWidth(2, 250)
+            self.cameras_table.setColumnWidth(3, 70)
         except Exception:
             # If fixed sizing isn't supported, fall back to stretch-last behaviour
             try:
@@ -126,18 +126,20 @@ class DeviceTabsPanel(QtWidgets.QWidget):
         spec_layout = QtWidgets.QFormLayout(self.tab_specs)
         # Visible spectrometer filename
         self.spec_vis_edit = QtWidgets.QLineEdit()
+        self.spec_vis_edit.setFixedWidth(150)
         spec_layout.addRow("Visible spectrometer filename", self.spec_vis_edit)
         # Visible spectrometer filters (text label, e.g. filter names) — use QLineEdit like filename
         self.spec_vis_filters = QtWidgets.QLineEdit()
-        self.spec_vis_filters.setFixedWidth(220)
+        self.spec_vis_filters.setFixedWidth(280)
         spec_layout.addRow("Visible spectrometer filters", self.spec_vis_filters)
 
         # XUV spectrometer filename
         self.spec_xuv_edit = QtWidgets.QLineEdit()
+        self.spec_xuv_edit.setFixedWidth(150)
         spec_layout.addRow("XUV spectrometer filename", self.spec_xuv_edit)
         # XUV spectrometer filters (text)
         self.spec_xuv_filters = QtWidgets.QLineEdit()
-        self.spec_xuv_filters.setFixedWidth(220)
+        self.spec_xuv_filters.setFixedWidth(280)
         spec_layout.addRow("XUV spectrometer filters", self.spec_xuv_filters)
 
         # connect edits to save handlers

@@ -2,7 +2,7 @@
   {
     "name": "Visible",
     "filename": "SPECTRO",
-    "filters": ""
+    "filters": "ND40A, ND10A"
   },
   {
     "name": "XUV",
