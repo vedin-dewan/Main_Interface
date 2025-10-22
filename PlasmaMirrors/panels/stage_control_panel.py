@@ -818,8 +818,10 @@ class StageControlPanel(QtWidgets.QWidget):
         # Buttons
         btn_row = QtWidgets.QHBoxLayout()
         btn_scan = QtWidgets.QPushButton("Scan")
+        btn_stop = QtWidgets.QPushButton("Stop Scan")
+        btn_stop.setToolTip("Request stopping an in-progress scan after the current step finishes")
         btn_cancel = QtWidgets.QPushButton("Close")
-        btn_row.addWidget(btn_scan); btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_scan); btn_row.addWidget(btn_stop); btn_row.addWidget(btn_cancel)
         layout.addRow(btn_row)
 
         # Progress bar (shows completed steps / total)
@@ -834,6 +836,13 @@ class StageControlPanel(QtWidgets.QWidget):
         def on_cancel():
             try:
                 d.reject()
+            except Exception:
+                pass
+
+        def on_stop():
+            try:
+                # emit request_stop_scan so MainWindow will set its stop flag
+                self.request_stop_scan.emit()
             except Exception:
                 pass
 
@@ -858,6 +867,7 @@ class StageControlPanel(QtWidgets.QWidget):
 
         btn_cancel.clicked.connect(on_cancel)
         btn_scan.clicked.connect(on_scan)
+        btn_stop.clicked.connect(on_stop)
         # show non-modal so it stays open (exec is modal); use show()
         d.setModal(False)
         d.show()
