@@ -1,0 +1,74 @@
+[
+  {
+    "label": "Bracket 1 on PM1",
+    "description": "33 < PM1R < 60 AND 140 < PM1Y < 150",
+    "ranges": [
+      { "stage": "PM1R", "min": 33.0, "max": 60.0 },
+      { "stage": "PM1Y", "min": 140.0, "max": 150.0 }
+    ]
+  },
+  {
+    "label": "Bracket 2 on PM1",
+    "description": "157 < PM1R < 173 AND 140 < PM1Y < 150",
+    "ranges": [
+      { "stage": "PM1R", "min": 157.0, "max": 173.0 },
+      { "stage": "PM1Y", "min": 140.0, "max": 150.0 }
+    ]
+  },
+  {
+    "label": "Bracket 3 on PM1",
+    "description": "284 < PM1R < 300 AND 140 < PM1Y < 150",
+    "ranges": [
+      { "stage": "PM1R", "min": 284.0, "max": 300.0 },
+      { "stage": "PM1Y", "min": 140.0, "max": 150.0 }
+    ]
+  },
+  {
+    "label": "PM2 Alignment disk 1 (installed on 8/11/2020)",
+    "description": "81 < PM2Y < 86 AND 66 < PM2X < 75",
+    "ranges": [
+      { "stage": "PM2Y", "min": 81.0, "max": 86.0 },
+      { "stage": "PM2X", "min": 66.0, "max": 75.0 }
+    ]
+  },
+  {
+    "label": "PM2 Alignment disk 2 (installed on 8/11/2020)",
+    "description": "81 < PM2Y < 86 AND 0 < PM2X < 2",
+    "ranges": [
+      { "stage": "PM2Y", "min": 81.0, "max": 86.0 },
+      { "stage": "PM2X", "min": 0.0, "max": 2.0 }
+    ]
+  },
+  {
+    "label": "PM2 Bracket 1 (installed on 8/11/2020)",
+    "description": "81 < PM2Y < 86 AND 56 < PM2X < 61",
+    "ranges": [
+      { "stage": "PM2Y", "min": 81.0, "max": 86.0 },
+      { "stage": "PM2X", "min": 56.0, "max": 61.0 }
+    ]
+  },
+  {
+    "label": "PM2 Bracket 2 (installed on 8/11/2020)",
+    "description": "81 < PM2Y < 86 AND 6 < PM2X < 12",
+    "ranges": [
+      { "stage": "PM2Y", "min": 81.0, "max": 86.0 },
+      { "stage": "PM2X", "min": 6.0, "max": 12.0 }
+    ]
+  },
+  {
+    "label": "PM3 Bracket 1",
+    "description": "104 < PM3Y < 112 AND 26 < PM3X < 38",
+    "ranges": [
+      { "stage": "PM3Y", "min": 104.0, "max": 112.0 },
+      { "stage": "PM3X", "min": 26.0, "max": 38.0 }
+    ]
+  },
+  {
+    "label": "PM3 Bracket 2",
+    "description": "178 < PM3Y < 185 AND 53 < PM3X < 67",
+    "ranges": [
+      { "stage": "PM3Y", "min": 178.0, "max": 185.0 },
+      { "stage": "PM3X", "min": 53.0, "max": 67.0 }
+    ]
+  }
+]

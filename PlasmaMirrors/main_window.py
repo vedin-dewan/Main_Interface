@@ -141,6 +141,15 @@ class MainWindow(QtWidgets.QMainWindow):
             # fallback default
             self._rename_max_wait_ms = getattr(self, '_rename_max_wait_ms', 5000)
         self.pm_panel= PMPanel()
+        # Load forbidden stage fire positions (user-editable JSON)
+        try:
+            self._forbidden_positions = []
+            try:
+                self._load_forbidden_positions()
+            except Exception:
+                self._forbidden_positions = []
+        except Exception:
+            self._forbidden_positions = []
         self.part1 = MotorStatusPanel(motors)
         self.part2 = StageControlPanel(self.part1.rows)
         # connect scan request from stage control to handler
@@ -735,6 +744,33 @@ class MainWindow(QtWidgets.QMainWindow):
             # Single-mode: start or queue a per-shot loop. The displayed counter is a cumulative tally
             # that is never auto-reset; it increments only after each shot's rename completes.
             if mode == 'single':
+                # Before starting a single-shot sequence, check forbidden positions for any PM groups with Auto checked
+                try:
+                    matches = self._check_forbidden_positions()
+                    if matches:
+                        # Build informative message
+                        msgs = []
+                        for m in matches:
+                            # m contains 'label' and list of matched ranges
+                            msgs.append(f"{m.get('label')}: {m.get('description','')}")
+                        from PyQt6.QtWidgets import QMessageBox
+                        mb = QMessageBox(self)
+                        mb.setIcon(QMessageBox.Icon.Warning)
+                        mb.setWindowTitle('Forbidden Stage Positions')
+                        mb.setText('One or more PM groups are at forbidden positions:')
+                        mb.setInformativeText('\n'.join(msgs) + '\n\nCancel to stop firing, Continue to proceed anyway.')
+                        mb.setStandardButtons(QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes)
+                        mb.setDefaultButton(QMessageBox.StandardButton.Cancel)
+                        resp = mb.exec()
+                        if resp == QMessageBox.StandardButton.Cancel:
+                            try: self.status_panel.append_line('Firing cancelled: forbidden PM positions')
+                            except Exception: pass
+                            return
+                        else:
+                            try: self.status_panel.append_line('User chose to continue despite forbidden PM positions')
+                            except Exception: pass
+                except Exception:
+                    pass
                 # if a per-shot sequence is already active, queue this request to run when it finishes
                 if getattr(self, '_per_shot_active', False):
                     try:
@@ -845,6 +881,150 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         except Exception:
             pass
+
+    def _load_forbidden_positions(self):
+        """Load ForbiddenStageFirePositions from parameters/ForbiddenStageFirePositions.json.
+
+        Format:
+        [
+          {
+            "label": "Bracket 1 on PM1",
+            "ranges": [
+              {"stage": "PM1R", "min": 33.0, "max": 60.0},
+              {"stage": "PM1Y", "min": 140.0, "max": 150.0}
+            ],
+            "description": "PM1 bracket area"
+          },
+          ...
+        ]
+        """
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(base_dir, 'parameters', 'ForbiddenStageFirePositions.json')
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                self._forbidden_positions = data
+            else:
+                self._forbidden_positions = []
+        except FileNotFoundError:
+            # create default empty file
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump([], f, indent=2)
+            except Exception:
+                pass
+            self._forbidden_positions = []
+        except Exception:
+            self._forbidden_positions = []
+
+    def _check_forbidden_positions(self):
+        """Return a list of matches (label + description) for forbidden positions currently violated.
+
+        Only PM groups with Auto checked are considered; for each forbidden entry, all ranges must be satisfied
+        for the entry to match (logical AND across ranges). Stage identifiers in the JSON should match the
+        PM group UI names used in PM_panel (e.g., 'PM1R', 'PM1Y', 'PM2R', etc.). We map names to addresses via
+        the part1 rows (MotorStatusPanel rows) by matching MotorInfo.short or long names.
+        """
+        matches = []
+        try:
+            # Only consider PM mirror groups that currently have Auto enabled
+            auto_enabled_groups = []
+            try:
+                for idx, mg in enumerate((self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3), start=1):
+                    try:
+                        if getattr(mg, 'auto', None) is not None and mg.auto.isChecked():
+                            auto_enabled_groups.append((idx, mg))
+                    except Exception:
+                        continue
+            except Exception:
+                auto_enabled_groups = []
+
+            if not auto_enabled_groups:
+                return []
+
+            # Build map of stage identifier -> current position for only auto-enabled groups
+            pos_map = {}
+            for mg_i, mg in auto_enabled_groups:
+                try:
+                    if getattr(mg, 'row_rx', None) is not None:
+                        val = float(mg.row_rx.get_current())
+                        # RX axis may be labeled R (rotation) or X (linear layouts); provide both aliases
+                        pos_map[f'PM{mg_i}R'] = val
+                        pos_map[f'PM{mg_i}X'] = val
+                except Exception:
+                    pass
+                try:
+                    if getattr(mg, 'row_y', None) is not None:
+                        val = float(mg.row_y.get_current())
+                        pos_map[f'PM{mg_i}Y'] = val
+                except Exception:
+                    pass
+                try:
+                    if getattr(mg, 'row_z', None) is not None:
+                        val = float(mg.row_z.get_current())
+                        pos_map[f'PM{mg_i}Z'] = val
+                except Exception:
+                    pass
+                try:
+                    if getattr(mg, 'row_sd', None) is not None:
+                        val = float(mg.row_sd.get_current())
+                        # SD axis is sometimes referred to as D in some files; provide both
+                        pos_map[f'PM{mg_i}SD'] = val
+                        pos_map[f'PM{mg_i}D'] = val
+                except Exception:
+                    pass
+
+            # fallback: also include any relevant MotorStatusPanel readings (by short name)
+            try:
+                part1_rows = getattr(self.part1, 'rows', []) if getattr(self, 'part1', None) is not None else []
+                for r in part1_rows:
+                    try:
+                        key = getattr(r.info, 'short', None)
+                        if key:
+                            pos_map[str(key)] = float(getattr(r.info, 'eng_value', 0.0))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Evaluate forbidden entries: require ALL ranges in an entry to match (logical AND) before warning
+            for ent in getattr(self, '_forbidden_positions', []) or []:
+                try:
+                    label = str(ent.get('label', 'Unnamed'))
+                    desc = str(ent.get('description', ''))
+                    ranges = ent.get('ranges', [])
+                    if not ranges:
+                        continue
+                    all_match = True
+                    for rng in ranges:
+                        try:
+                            stage_id = str(rng.get('stage', '')).strip()
+                            if not stage_id:
+                                all_match = False
+                                break
+                            if stage_id not in pos_map:
+                                all_match = False
+                                break
+                            cur = float(pos_map.get(stage_id, 0.0))
+                            minv = rng.get('min', None)
+                            maxv = rng.get('max', None)
+                            tol = 1e-4
+                            low_ok = True if minv is None else (cur > float(minv) + tol)
+                            high_ok = True if maxv is None else (cur < float(maxv) - tol)
+                            if not (low_ok and high_ok):
+                                all_match = False
+                                break
+                        except Exception:
+                            all_match = False
+                            break
+                    if all_match:
+                        matches.append({'label': label, 'description': desc})
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return matches
 
     def _move_and_wait(self, address: int, target: float, unit: str, timeout_ms: int = 30_000) -> bool:
         """Request an absolute move and block (without freezing UI) until moved event for address arrives or timeout. Returns True on success."""
