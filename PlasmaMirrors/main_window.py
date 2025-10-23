@@ -485,9 +485,58 @@ class MainWindow(QtWidgets.QMainWindow):
                                 self.pico_panel.set_discovered_items(items)
                             except Exception:
                                 pass
+                        # update device status panel PWR for picomotors
+                        try:
+                            if getattr(self, 'device_status_panel', None) is not None:
+                                try:
+                                    has = bool(items)
+                                    # call method with True when adapters found else False
+                                    self.device_status_panel.on_pico_adapter_found(has)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 self.pico_io.discovered.connect(_on_pico_discovered)
+                # Also hook opened_count to mark PWR if adapters were detected at open time
+                try:
+                    if getattr(self, 'device_status_panel', None) is not None:
+                        try:
+                            self.pico_io.opened_count.connect(lambda n: self.device_status_panel.on_pico_adapter_found(int(n) > 0))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # When a picomotor axis moves, update device status STS to OK; use a small wrapper so signatures match
+                try:
+                    if getattr(self, 'device_status_panel', None) is not None:
+                        def _on_pico_moved_for_status(adapter_key, address, axis, position):
+                            try:
+                                # mark OK on any successful axis move
+                                try:
+                                    self.device_status_panel.on_picomotor_moved(axis)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                        try:
+                            self.pico_io.moved.connect(_on_pico_moved_for_status)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # Route picomotor errors to device status as failures (conservative)
+                try:
+                    if getattr(self, 'device_status_panel', None) is not None:
+                        try:
+                            self.pico_io.error.connect(lambda msg: self.device_status_panel.mark_picomotor_failed(None, reason=str(msg)))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             except Exception:
                 pass
 

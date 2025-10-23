@@ -3,9 +3,6 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 
 class DeviceStatusPanel(QtWidgets.QWidget):
     """Panel listing connected devices with PWR/STS/Description columns.
-
-    Layout mirrors the screenshot: a tree with groups: Zaber Stages, Cameras, Spectrometers.
-    Methods are provided so MainWindow can populate and update device states.
     """
 
     def __init__(self, parent=None):
@@ -20,6 +17,7 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         self.tree.setColumnCount(4)
         self.tree.setHeaderLabels(['Devices', 'PWR', 'STS', 'Description'])
         self.tree.header().setStretchLastSection(False)
+        self.tree.header().setStyleSheet("QHeaderView::section { background-color: #ffffff; color: #000000; }")
         # fixed column widths
         self.tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Fixed)
@@ -43,6 +41,11 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         self.tree.addTopLevelItem(self.group_stages)
         self.tree.addTopLevelItem(self.group_cameras)
         self.tree.addTopLevelItem(self.group_specs)
+
+        # add a single-row Picomotors item (not a collapsible group)
+        self._pico_item = QtWidgets.QTreeWidgetItem(self.tree, ['Picomotors', '', '', ''])
+        self.tree.addTopLevelItem(self._pico_item)
+
 
         # maps for quick lookup
         self._stage_items = {}    # addr -> QTreeWidgetItem
@@ -95,6 +98,21 @@ class DeviceStatusPanel(QtWidgets.QWidget):
                         continue
             except Exception:
                 _spec_snapshot = {}
+
+            # Snapshot pico item state (single-row) so we can restore it after repopulating
+            try:
+                _pico_snapshot = None
+                if getattr(self, '_pico_item', None) is not None:
+                    try:
+                        pwr = self._pico_item.text(1)
+                        sts = self._pico_item.text(2)
+                        pwr_bg = self._pico_item.background(1).color().name() if self._pico_item.background(1) is not None else None
+                        sts_bg = self._pico_item.background(2).color().name() if self._pico_item.background(2) is not None else None
+                        _pico_snapshot = (pwr, pwr_bg, sts, sts_bg)
+                    except Exception:
+                        _pico_snapshot = None
+            except Exception:
+                _pico_snapshot = None
 
             # Clear existing children and maps
             self.group_stages.takeChildren()
@@ -176,6 +194,17 @@ class DeviceStatusPanel(QtWidgets.QWidget):
             self.tree.expandItem(self.group_stages)
             self.tree.expandItem(self.group_cameras)
             self.tree.expandItem(self.group_specs)
+
+            # restore pico snapshot (if any)
+            try:
+                if _pico_snapshot is not None and getattr(self, '_pico_item', None) is not None:
+                    pwr, pwr_bg, sts, sts_bg = _pico_snapshot
+                    if pwr:
+                        self._set_cell(self._pico_item, 1, pwr, pwr_bg)
+                    if sts:
+                        self._set_cell(self._pico_item, 2, sts, sts_bg)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -284,6 +313,47 @@ class DeviceStatusPanel(QtWidgets.QWidget):
                     if win is not None and hasattr(win, 'status_panel') and getattr(win, 'status_panel') is not None:
                         try:
                             win.status_panel.append_line(f"Stage {addr} failed: {reason}")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # ---------- picomotors updates ----------
+    def on_pico_adapter_found(self, connected: bool):
+        """Call with True when picomotor adapter/connection is detected, False when disconnected."""
+        try:
+            if getattr(self, '_pico_item', None) is None:
+                return
+            if connected:
+                self._set_cell(self._pico_item, 1, 'ON', '#27a227')
+            else:
+                self._set_cell(self._pico_item, 1, 'OFF', '#d12b2b')
+        except Exception:
+            pass
+
+    def on_picomotor_moved(self, axis: int = None):
+        """Called when any picomotor axis successfully moves — mark STS OK."""
+        try:
+            if getattr(self, '_pico_item', None) is None:
+                return
+            self._set_cell(self._pico_item, 2, 'OK', '#27a227')
+        except Exception:
+            pass
+
+    def mark_picomotor_failed(self, axis: int = None, reason: str = None):
+        """Mark picomotor STS as failed and optionally log a reason to the global status panel."""
+        try:
+            if getattr(self, '_pico_item', None) is None:
+                return
+            self._set_cell(self._pico_item, 2, 'F', '#d12b2b')
+            if reason:
+                try:
+                    win = self.window()
+                    if win is not None and hasattr(win, 'status_panel') and getattr(win, 'status_panel') is not None:
+                        try:
+                            win.status_panel.append_line(f"Picomotor failed: {reason}")
                         except Exception:
                             pass
                 except Exception:
