@@ -327,6 +327,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage.moved.connect(self._on_moved)
         self.stage.homed.connect(self._on_homed)
         self.stage.bounds.connect(self._on_bounds)
+        # track currently-moving addresses so we can mark them failed on error
+        self._moving_addresses = set()
+        # ensure we also route stage.error to our handler that can mark failed rows
+        try:
+            self.stage.error.connect(self._on_stage_error)
+        except Exception:
+            pass
         self.io_thread.start()
 
         # If we have a device status panel, connect additional hooks
@@ -347,6 +354,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 # forward moving/moved events directly
                 try:
                     self.stage.moving.connect(self.device_status_panel.on_stage_moving)
+                    # also update moving_addresses set
+                    self.stage.moving.connect(self._track_moving_address)
                 except Exception:
                     pass
                 try:
@@ -1349,6 +1358,50 @@ class MainWindow(QtWidgets.QMainWindow):
         # intentionally ignore shots_progress: UI tally is updated only after per-shot completion
         try:
             return
+        except Exception:
+            pass
+
+    def _track_moving_address(self, address: int, is_moving: bool):
+        try:
+            if is_moving:
+                try:
+                    self._moving_addresses.add(int(address))
+                except Exception:
+                    pass
+            else:
+                try:
+                    self._moving_addresses.discard(int(address))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _on_stage_error(self, msg: str):
+        # mark any currently-moving addresses as failed and log the error
+        try:
+            # write message to status panel also (already connected elsewhere but repeat for clarity)
+            try:
+                self.status_panel.append_line(f"Stage error: {msg}")
+            except Exception:
+                pass
+            # mark moving addresses as failed
+            try:
+                for addr in list(getattr(self, '_moving_addresses', set())):
+                    try:
+                        if getattr(self, 'device_status_panel', None) is not None:
+                            try:
+                                self.device_status_panel.mark_stage_failed(addr, reason=msg)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # clear moving set
+            try:
+                self._moving_addresses.clear()
+            except Exception:
+                pass
         except Exception:
             pass
 

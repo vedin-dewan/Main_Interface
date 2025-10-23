@@ -193,6 +193,33 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         except Exception:
             pass
 
+    def mark_stage_failed(self, address: int, reason: str = None):
+        """Mark a stage as failed (STS='F') and optionally append a reason to global status panel."""
+        try:
+            addr = int(address)
+            item = self._stage_items.get(addr)
+            if item is None:
+                try:
+                    if 1 <= int(addr) <= len(self._stage_items):
+                        item = list(self._stage_items.values())[int(addr) - 1]
+                except Exception:
+                    item = None
+            if item is not None:
+                self._set_cell(item, 2, 'F', '#d12b2b')
+            # log reason if provided
+            if reason:
+                try:
+                    win = self.window()
+                    if win is not None and hasattr(win, 'status_panel') and getattr(win, 'status_panel') is not None:
+                        try:
+                            win.status_panel.append_line(f"Stage {addr} failed: {reason}")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     # ---------- cameras / spectrometers updates ----------
     def on_fire_started(self):
         """Called when Fire is clicked: mark camera/spec STS as checking (yellow) until rename completes."""
