@@ -97,6 +97,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self.device_tabs.stages_changed.connect(lambda new_stages: self._on_stages_edited(new_stages))
         except Exception:
             pass
+        try:
+            # update device status panel whenever device definitions change
+            if getattr(self, 'device_status_panel', None) is not None:
+                try:
+                    self.device_tabs.stages_changed.connect(lambda new: self.device_status_panel.populate(self.device_tabs))
+                except Exception:
+                    pass
+                try:
+                    self.device_tabs.cameras_changed.connect(lambda new: self.device_status_panel.populate(self.device_tabs))
+                except Exception:
+                    pass
+                try:
+                    self.device_tabs.spectrometers_changed.connect(lambda new: self.device_status_panel.populate(self.device_tabs))
+                except Exception:
+                    pass
+        except Exception:
+            pass
         self.overall_controls = SavingPanel()
         self.fire_panel    = FireControlsPanel()
         # Ensure burst relative folder field is only editable in Burst mode

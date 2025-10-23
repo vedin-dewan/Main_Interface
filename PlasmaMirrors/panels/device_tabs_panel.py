@@ -36,6 +36,9 @@ class DeviceTabsPanel(QtWidgets.QWidget):
 
     # emit when stages.json is changed by the UI (provides the new list of stage dicts)
     stages_changed = QtCore.pyqtSignal(list)
+    # emit when cameras/spectrometers definitions change
+    cameras_changed = QtCore.pyqtSignal(list)
+    spectrometers_changed = QtCore.pyqtSignal(list)
 
     def _build_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -397,6 +400,10 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             with open(self.cameras_file, 'w', encoding='utf-8') as f:
                 json.dump(out, f, indent=2)
             self._cameras = out
+            try:
+                self.cameras_changed.emit(self._cameras)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -461,6 +468,10 @@ class DeviceTabsPanel(QtWidgets.QWidget):
             with open(self.spectrometers_file, 'w', encoding='utf-8') as f:
                 json.dump(out, f, indent=2)
             self._spectrometers = out
+            try:
+                self.spectrometers_changed.emit(self._spectrometers)
+            except Exception:
+                pass
         except Exception:
             pass
 
