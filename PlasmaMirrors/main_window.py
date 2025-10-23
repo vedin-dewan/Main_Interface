@@ -1790,6 +1790,32 @@ class MainWindow(QtWidgets.QMainWindow):
                             self._processed_output_files.update(processed)
                     except Exception:
                         pass
+                    # Build a mapping token -> newpath for DeviceStatusPanel to update camera/spec STS
+                    try:
+                        renamed_map = {}
+                        # tokens may be provided as identifiers for cameras/specs; match moved dest filenames
+                        toks = [str(t).strip() for t in (tokens or []) if t]
+                        for old, dest in (moved or []):
+                            try:
+                                b = os.path.basename(dest).lower()
+                                for t in toks:
+                                    try:
+                                        safe_label = ''.join(ch for ch in t if ch.isalnum() or ch in ('-', '_')) or t
+                                        if safe_label.lower() in b:
+                                            # map original token -> dest fullpath
+                                            renamed_map.setdefault(t, dest)
+                                            break
+                                    except Exception:
+                                        continue
+                            except Exception:
+                                continue
+                        try:
+                            if getattr(self, 'device_status_panel', None) is not None:
+                                self.device_status_panel.update_camera_spec_status(renamed_map)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
                 except Exception as e:
                     try: self.status_panel.append_line(f'Burst save failed (sync fallback): {e}')
                     except Exception: pass
@@ -1844,6 +1870,31 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         if hasattr(self, '_processed_output_files') and processed is not None:
                             self._processed_output_files.update(processed)
+                    except Exception:
+                        pass
+
+                    # Update DeviceStatusPanel camera/spectrometer STS based on moved list
+                    try:
+                        renamed_map = {}
+                        toks = [str(t).strip() for t in (tokens or []) if t]
+                        for old, dest in (moved or []):
+                            try:
+                                b = os.path.basename(dest).lower()
+                                for t in toks:
+                                    try:
+                                        safe_label = ''.join(ch for ch in t if ch.isalnum() or ch in ('-', '_')) or t
+                                        if safe_label.lower() in b:
+                                            renamed_map.setdefault(t, dest)
+                                            break
+                                    except Exception:
+                                        continue
+                            except Exception:
+                                continue
+                        try:
+                            if getattr(self, 'device_status_panel', None) is not None:
+                                self.device_status_panel.update_camera_spec_status(renamed_map)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
 
