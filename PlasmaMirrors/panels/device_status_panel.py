@@ -177,6 +177,22 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         except Exception:
             pass
 
+    def on_stage_homed(self, address: int):
+        """Called when a homing operation completes for an address — treat as OK."""
+        try:
+            addr = int(address)
+            item = self._stage_items.get(addr)
+            if item is None:
+                try:
+                    if 1 <= int(addr) <= len(self._stage_items):
+                        item = list(self._stage_items.values())[int(addr) - 1]
+                except Exception:
+                    item = None
+            if item is not None:
+                self._set_cell(item, 2, 'OK', '#27a227')
+        except Exception:
+            pass
+
     # ---------- cameras / spectrometers updates ----------
     def on_fire_started(self):
         """Called when Fire is clicked: mark camera/spec STS as checking (yellow) until rename completes."""

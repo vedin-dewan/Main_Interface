@@ -353,6 +353,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.stage.moved.connect(self.device_status_panel.on_stage_moved)
                 except Exception:
                     pass
+                try:
+                    self.stage.homed.connect(self.device_status_panel.on_stage_homed)
+                except Exception:
+                    pass
         except Exception:
             pass
 
