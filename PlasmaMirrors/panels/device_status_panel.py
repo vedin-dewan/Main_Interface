@@ -55,7 +55,48 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         device_tabs.get_stages() should return the stages list; device_tabs._cameras and _spectrometers are used.
         """
         try:
-            # Clear existing children
+            # Snapshot existing PWR/STS so we can restore them after repopulating
+            try:
+                _stage_snapshot = {}
+                for addr, it in list(self._stage_items.items()):
+                    try:
+                        pwr = it.text(1)
+                        sts = it.text(2)
+                        pwr_bg = it.background(1).color().name() if it.background(1) is not None else None
+                        sts_bg = it.background(2).color().name() if it.background(2) is not None else None
+                        _stage_snapshot[int(addr)] = (pwr, pwr_bg, sts, sts_bg)
+                    except Exception:
+                        continue
+            except Exception:
+                _stage_snapshot = {}
+            try:
+                _cam_snapshot = {}
+                for name, it in list(self._camera_items.items()):
+                    try:
+                        pwr = it.text(1)
+                        sts = it.text(2)
+                        pwr_bg = it.background(1).color().name() if it.background(1) is not None else None
+                        sts_bg = it.background(2).color().name() if it.background(2) is not None else None
+                        _cam_snapshot[str(name)] = (pwr, pwr_bg, sts, sts_bg)
+                    except Exception:
+                        continue
+            except Exception:
+                _cam_snapshot = {}
+            try:
+                _spec_snapshot = {}
+                for name, it in list(self._spec_items.items()):
+                    try:
+                        pwr = it.text(1)
+                        sts = it.text(2)
+                        pwr_bg = it.background(1).color().name() if it.background(1) is not None else None
+                        sts_bg = it.background(2).color().name() if it.background(2) is not None else None
+                        _spec_snapshot[str(name)] = (pwr, pwr_bg, sts, sts_bg)
+                    except Exception:
+                        continue
+            except Exception:
+                _spec_snapshot = {}
+
+            # Clear existing children and maps
             self.group_stages.takeChildren()
             self.group_cameras.takeChildren()
             self.group_specs.takeChildren()
@@ -82,6 +123,16 @@ class DeviceStatusPanel(QtWidgets.QWidget):
                 it.setData(0, QtCore.Qt.ItemDataRole.UserRole, {'address': addr})
                 self.group_stages.addChild(it)
                 self._stage_items[int(addr)] = it
+                # restore previous PWR/STS if present
+                try:
+                    if int(addr) in _stage_snapshot:
+                        pwr, pwr_bg, sts, sts_bg = _stage_snapshot.get(int(addr), ('', None, '', None))
+                        if pwr:
+                            self._set_cell(it, 1, pwr, pwr_bg)
+                        if sts:
+                            self._set_cell(it, 2, sts, sts_bg)
+                except Exception:
+                    pass
 
             # Cameras
             cams = getattr(device_tabs, '_cameras', []) or []
@@ -91,6 +142,16 @@ class DeviceStatusPanel(QtWidgets.QWidget):
                 it = QtWidgets.QTreeWidgetItem(self.group_cameras, [name, '', '', purpose])
                 self.group_cameras.addChild(it)
                 self._camera_items[name] = it
+                # restore camera status if available
+                try:
+                    if str(name) in _cam_snapshot:
+                        pwr, pwr_bg, sts, sts_bg = _cam_snapshot.get(str(name), ('', None, '', None))
+                        if pwr:
+                            self._set_cell(it, 1, pwr, pwr_bg)
+                        if sts:
+                            self._set_cell(it, 2, sts, sts_bg)
+                except Exception:
+                    pass
 
             # Spectrometers: use filename token as name; description fixed to Vis/XUV
             specs = getattr(device_tabs, '_spectrometers', []) or []
@@ -100,6 +161,16 @@ class DeviceStatusPanel(QtWidgets.QWidget):
                 it = QtWidgets.QTreeWidgetItem(self.group_specs, [filename, '', '', label])
                 self.group_specs.addChild(it)
                 self._spec_items[filename] = it
+                # restore spectrometer status if available
+                try:
+                    if str(filename) in _spec_snapshot:
+                        pwr, pwr_bg, sts, sts_bg = _spec_snapshot.get(str(filename), ('', None, '', None))
+                        if pwr:
+                            self._set_cell(it, 1, pwr, pwr_bg)
+                        if sts:
+                            self._set_cell(it, 2, sts, sts_bg)
+                except Exception:
+                    pass
 
             # expand groups
             self.tree.expandItem(self.group_stages)
