@@ -339,16 +339,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
                 # forward discovered devices to the status panel for PWR updates
                 try:
-                    self.stage.discovered.connect(lambda devices: self.device_status_panel.on_zaber_discovered(devices))
+                    # Use direct connections to the panel methods so Qt's queued connection
+                    # machinery handles cross-thread invocation.
+                    self.stage.discovered.connect(self.device_status_panel.on_zaber_discovered)
                 except Exception:
                     pass
-                # forward moving/moved events
+                # forward moving/moved events directly
                 try:
-                    self.stage.moving.connect(lambda addr, mv: self.device_status_panel.on_stage_moving(addr, mv))
+                    self.stage.moving.connect(self.device_status_panel.on_stage_moving)
                 except Exception:
                     pass
                 try:
-                    self.stage.moved.connect(lambda addr, pos=None: self.device_status_panel.on_stage_moved(addr, pos))
+                    self.stage.moved.connect(self.device_status_panel.on_stage_moved)
                 except Exception:
                     pass
         except Exception:

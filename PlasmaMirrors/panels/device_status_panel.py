@@ -69,14 +69,19 @@ class DeviceStatusPanel(QtWidgets.QWidget):
             except Exception:
                 stages = []
 
-            # Add stage children in list order; address = index+1
+            # Add stage children keyed by configured stage number ('num') where available
             for i, s in enumerate(stages, start=1):
-                name = s.get('name') or s.get('Abr') or f'Addr{i}'
+                # prefer explicit 'num' in stage definition, fallback to enumerated index
+                try:
+                    addr = int(s.get('num', i))
+                except Exception:
+                    addr = int(i)
+                name = s.get('name') or s.get('Abr') or f'Addr{addr}'
                 desc = s.get('description', '') or s.get('desc', '') or ''
-                it = QtWidgets.QTreeWidgetItem(self.group_stages, [f"{i}. {name}", '', '', desc])
-                it.setData(0, QtCore.Qt.ItemDataRole.UserRole, {'address': i})
+                it = QtWidgets.QTreeWidgetItem(self.group_stages, [f"{addr}. {name}", '', '', desc])
+                it.setData(0, QtCore.Qt.ItemDataRole.UserRole, {'address': addr})
                 self.group_stages.addChild(it)
-                self._stage_items[int(i)] = it
+                self._stage_items[int(addr)] = it
 
             # Cameras
             cams = getattr(device_tabs, '_cameras', []) or []
@@ -127,6 +132,13 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         try:
             addr = int(address)
             item = self._stage_items.get(addr)
+            # fallback: if no direct match, try by enumerated index (1-based)
+            if item is None:
+                try:
+                    if 1 <= int(addr) <= len(self._stage_items):
+                        item = list(self._stage_items.values())[int(addr) - 1]
+                except Exception:
+                    item = None
             if is_moving:
                 # set moving indicator (yellow); wait for moved signal to mark OK
                 if item is not None:
@@ -142,8 +154,26 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         try:
             addr = int(address)
             item = self._stage_items.get(addr)
+            # fallback: if no direct match, try by enumerated index (1-based)
+            if item is None:
+                try:
+                    if 1 <= int(addr) <= len(self._stage_items):
+                        item = list(self._stage_items.values())[int(addr) - 1]
+                except Exception:
+                    item = None
             if item is not None:
                 self._set_cell(item, 2, 'OK', '#27a227')
+            else:
+                # If we couldn't find an item, write a debug line to the global status panel if available
+                try:
+                    win = self.window()
+                    if win is not None and hasattr(win, 'status_panel') and getattr(win, 'status_panel') is not None:
+                        try:
+                            win.status_panel.append_line(f"DeviceStatusPanel: moved event for Addr {addr} but no matching UI row found")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
         except Exception:
             pass
 
