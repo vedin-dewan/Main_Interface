@@ -453,7 +453,15 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 try:
                     # emit a single concise global message when opened_count arrives
-                    self.pico_io.opened_count.connect(lambda n: self.status_panel.append_line(f"Picomotor I/O opened; adapters: {n}"))
+                    def _on_pico_opened(n):
+                        try:
+                            # existing concise status
+                            self.status_panel.append_line(f"Picomotor I/O opened; adapters: {n}")
+                            # treat picomotor open as the final initialization step
+                            self.status_panel.append_line('Initialization complete')
+                        except Exception:
+                            pass
+                    self.pico_io.opened_count.connect(_on_pico_opened)
                 except Exception:
                     pass
                 try:
