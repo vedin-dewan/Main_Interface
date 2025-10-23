@@ -1,5 +1,4 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import time
 
 
 class DeviceStatusPanel(QtWidgets.QWidget):
@@ -12,8 +11,7 @@ class DeviceStatusPanel(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName('device_status')
-        self._last_moved_ts = {}  # address -> last moved timestamp
-        self._moving_start = {}
+    # no timers: rely on moving/moved signals to indicate state
 
         title = QtWidgets.QLabel('Devices')
         title.setStyleSheet('font-weight:700; font-size:14px;')
@@ -22,11 +20,15 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         self.tree.setColumnCount(4)
         self.tree.setHeaderLabels(['Devices', 'PWR', 'STS', 'Description'])
         self.tree.header().setStretchLastSection(False)
-        # fixed column widths similar to screenshot
-        self.tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        # fixed column widths
+        self.tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.tree.header().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Fixed)
-        self.tree.header().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.tree.header().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        self.tree.setColumnWidth(0, 180)   # Devices
+        self.tree.setColumnWidth(1, 48)    # PWR
+        self.tree.setColumnWidth(2, 48)    # STS
+        self.tree.setColumnWidth(3, 380)   # Description
         self.tree.setRootIsDecorated(True)
 
         lay = QtWidgets.QVBoxLayout(self)
@@ -125,33 +127,20 @@ class DeviceStatusPanel(QtWidgets.QWidget):
         try:
             addr = int(address)
             item = self._stage_items.get(addr)
-            now = time.time()
             if is_moving:
-                # set moving indicator (yellow)
+                # set moving indicator (yellow); wait for moved signal to mark OK
                 if item is not None:
                     self._set_cell(item, 2, 'MOV', '#e6a400')
-                self._moving_start[addr] = now
             else:
-                # small delay then evaluate whether moved occurred
-                start = float(self._moving_start.get(addr, 0))
-                def _check():
-                    lm = float(self._last_moved_ts.get(addr, 0))
-                    if lm and lm >= start:
-                        # moved happened
-                        if item is not None:
-                            self._set_cell(item, 2, 'OK', '#27a227')
-                    else:
-                        # no moved event -> failure
-                        if item is not None:
-                            self._set_cell(item, 2, 'F', '#d12b2b')
-                QtCore.QTimer.singleShot(120, _check)
+                # when not moving, do not assume failure — on_stage_moved will set OK when move completes
+                # leave the current STS until moved event arrives
+                pass
         except Exception:
             pass
 
     def on_stage_moved(self, address: int, final_pos: float = None):
         try:
             addr = int(address)
-            self._last_moved_ts[addr] = time.time()
             item = self._stage_items.get(addr)
             if item is not None:
                 self._set_cell(item, 2, 'OK', '#27a227')
