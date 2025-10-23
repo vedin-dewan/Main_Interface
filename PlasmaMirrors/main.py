@@ -1,3 +1,8 @@
+"""Main Interface for the Plasma Mirrors Experiment at the ETOILES laboratory.
+   Authors: Vedin Dewan, Xuyang Xu, Arunava Das
+"""
+
+
 import sys
 from PyQt6 import QtWidgets
 from main_window import MainWindow
