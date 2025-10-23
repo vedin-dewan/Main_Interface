@@ -626,9 +626,9 @@ class PMPanel(QtWidgets.QWidget):
             with open(filename, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             self.set_state(data)
-            if logger:
-                try: logger(f"PM settings loaded ← {filename}")
-                except Exception: pass
+            # if logger:
+            #     try: logger(f"PM settings loaded ← {filename}")
+            #     except Exception: pass
         except Exception as e:
             if logger:
                 try: logger(f"PM settings load failed: {e}")

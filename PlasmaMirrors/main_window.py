@@ -1,6 +1,5 @@
 import sys
 from PyQt6 import QtCore, QtGui, QtWidgets
-# from matplotlib.pyplot import grid
 from MotorInfo import MotorInfo
 from device_io.zaber_stage_io import ZaberStageIO
 from panels.motor_status_panel import MotorStatusPanel
@@ -15,15 +14,16 @@ from panels.device_tabs_panel import DeviceTabsPanel
 from device_io.newfocus_pico_io import NewFocusPicoIO
 from panels.picomotor_panel import PicoPanel
 from panels.overall_control_panel import SavingPanel
+from utilities.file_info_writer import InfoWriter
+import utilities.file_renamer as file_renamer
+from utilities.pm_auto import PMAutoManager
+from utilities.forbidden_position import ForbiddenPositionStore
 import os
 import json
 import time
 from datetime import datetime
-from utilities.file_info_writer import InfoWriter
-import utilities.file_renamer as file_renamer
 import math
-from utilities.pm_auto import PMAutoManager
-from utilities.forbidden_position import ForbiddenPositionStore
+
 
 # legacy module defaults are kept only as fallbacks; we prefer device_connections.json
 PORT = "COM8"; BAUD = 115200
@@ -42,7 +42,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Plasma Mirrors GUI")
+        self.setWindowTitle("Plasma Mirrors Main Interface")
         self.resize(1400, 1300)
 
         # Load stage definitions from parameters/stages.json and convert to MotorInfo list
@@ -271,12 +271,6 @@ class MainWindow(QtWidgets.QMainWindow):
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
 
-        # Layout (4 columns left -> right):
-        # col0 (leftmost): placeholder_panel (top) / device_tabs (bottom)
-        # col1: overall_controls (top) / status_panel (bottom)
-        # col2: fire_panel (top) / part2 (stage_control_panel) (bottom)
-        # col3 (rightmost): pm_panel (top) / part1 (motor_status_panel) (bottom)
-
         # Top row (row 0)
         # left-top: Device status panel if available, otherwise fallback to placeholder
         if getattr(self, 'device_status_panel', None) is not None:
@@ -288,8 +282,8 @@ class MainWindow(QtWidgets.QMainWindow):
         grid.addWidget(self.fire_panel, 0, 2)
         grid.addWidget(self.pm_panel, 0, 3)
 
-    # Bottom row (row 1)
-    # allow device_tabs to expand so its tab contents are visible
+        # Bottom row (row 1)
+        # allow device_tabs to expand so its tab contents are visible
         grid.addWidget(self.device_tabs, 1, 0)
         grid.addWidget(self.status_panel, 1, 1)
         grid.addWidget(self.part2, 1, 2)
@@ -655,7 +649,6 @@ class MainWindow(QtWidgets.QMainWindow):
             "QPushButton { background: #2c2c2c; border: 1px solid #3a3a3a; padding: 4px 8px; border-radius: 6px; }"
             "QPushButton:checked { background: #3a523a; }"
         )
-
     @QtCore.pyqtSlot(list)
     def _on_discovered(self, devices: list):
         if devices:
@@ -2197,7 +2190,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         # toggle the visual engaged state
                         new_state = not mg.bypass.is_engaged()
                         mg.bypass.set_engaged(new_state)
-                        self.status_panel.append_line(f"PM{pm_index} bypass visual updated after move → {'ENGAGE' if new_state else 'BYPASS'}")
+                        #self.status_panel.append_line(f"PM{pm_index} bypass visual updated after move → {'ENGAGE' if new_state else 'BYPASS'}")
                     except Exception:
                         pass
             except Exception:
@@ -2483,31 +2476,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot(int)
     def _on_request_home(self, address: int):
-        self.status_panel.append_line(f"Home requested → Address {address}")
+        #self.status_panel.append_line(f"Home requested → Address {address}")
         self.req_home.emit(address)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_move_delta(self, address: int, delta_pos: float):
         unit = self.part1.rows[address - 1].info.unit
-        self.status_panel.append_line(f"Jog requested → Address {address}, Delta {delta_pos:+.6f} {unit}")
+        #self.status_panel.append_line(f"Jog requested → Address {address}, Delta {delta_pos:+.6f} {unit}")
         self.req_jog.emit(address, delta_pos, unit)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_set_speed(self, address: int, new_spd: float):
         unit = self.part1.rows[address - 1].info.speed_unit
-        self.status_panel.append_line(f"Set speed requested → Address {address}: {new_spd:.6f} {unit}")
+        #self.status_panel.append_line(f"Set speed requested → Address {address}: {new_spd:.6f} {unit}")
         self.req_spd.emit(address, new_spd, unit)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_set_lbound(self, address: int, new_lbound: float):
         unit = self.part1.rows[address - 1].info.unit
-        self.status_panel.append_line(f"Set lower bound requested → Address {address}: {new_lbound:.6f} {unit}")
+        #self.status_panel.append_line(f"Set lower bound requested → Address {address}: {new_lbound:.6f} {unit}")
         self.req_set_lbound.emit(address, new_lbound, unit)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_set_ubound(self, address: int, new_ubound: float):
         unit = self.part1.rows[address - 1].info.unit
-        self.status_panel.append_line(f"Set upper bound requested → Address {address}: {new_ubound:.6f} {unit}")
+        #self.status_panel.append_line(f"Set upper bound requested → Address {address}: {new_ubound:.6f} {unit}")
         self.req_set_ubound.emit(address, new_ubound, unit)
     
     @QtCore.pyqtSlot(str)
@@ -2769,7 +2762,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 target = sd_row.max.value()
             unit = 'mm'  # SD axes use mm in MotorInfo mapping; this should match part1 rows' unit if needed
-            self.status_panel.append_line(f"PM{pm_index} bypass click (was {'BYPASS' if prev_was_bypass else 'ENGAGE'}) → moving SD (addr {addr}) to {target:.6f} {unit}")
+            #self.status_panel.append_line(f"PM{pm_index} bypass click (was {'BYPASS' if prev_was_bypass else 'ENGAGE'}) → moving SD (addr {addr}) to {target:.6f} {unit}")
             # schedule a move via req_abs (thread-safe queued signal)
             # record as pending so we flip the bypass visual only after the move completes
             try:
@@ -2789,10 +2782,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 unit = self.part1.rows[address - 1].info.unit
             except Exception:
                 unit = 'mm'
-            try:
-                self.status_panel.append_line(f"Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
-            except Exception:
-                pass
+            # try:
+            #     self.status_panel.append_line(f"Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
+            # except Exception:
+            #     pass
             try:
                 self.req_abs.emit(int(address), float(target), unit)
             except Exception:
@@ -2819,10 +2812,10 @@ class MainWindow(QtWidgets.QMainWindow):
             unit = self.part1.rows[address - 1].info.unit
         except Exception:
             unit = 'mm'
-        try:
-            self.status_panel.append_line(f"PG Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
-        except Exception:
-            pass
+        # try:
+        #     self.status_panel.append_line(f"PG Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
+        # except Exception:
+        #     pass
         try:
             self.req_abs.emit(int(address), float(target), unit)
         except Exception:
@@ -2847,10 +2840,10 @@ class MainWindow(QtWidgets.QMainWindow):
             unit = self.part1.rows[address - 1].info.unit
         except Exception:
             unit = 'mm'
-        try:
-            self.status_panel.append_line(f"HeNe Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
-        except Exception:
-            pass
+        # try:
+        #     self.status_panel.append_line(f"HeNe Alignment Quick {'ON' if on else 'OFF'} → Addr {address}, Target {float(target):.6f} {unit}")
+        # except Exception:
+        #     pass
         try:
             self.req_abs.emit(int(address), float(target), unit)
         except Exception:

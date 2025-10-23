@@ -36,7 +36,7 @@ class ZaberStageIO(QtCore.QObject):
         try:
             Library.enable_device_db_store()
             self.conn = Connection.open_serial_port(self.port, baud_rate=self.baud)
-            self.log.emit(f"I/O opened {self.port} (Binary, {self.baud} baud)")
+            self.log.emit(f"Zaber I/O opened {self.port} (Binary, {self.baud} baud)")
             self.opened.emit()
         except Exception as e:
             self.error.emit(f"Open failed: {e}")
@@ -93,13 +93,13 @@ class ZaberStageIO(QtCore.QObject):
                 spd = dev.settings.get(BinarySettings.TARGET_SPEED, Units.VELOCITY_MILLIMETRES_PER_SECOND)
                 self.position.emit(int(address), float(steps), float(pos))
                 self.speed.emit(int(address), float(spd))
-                self.log.emit(f"Address {address}: {steps:.0f} steps, {pos:.6f} mm, {spd:.2f} mm/s")
+                #self.log.emit(f"Address {address}: {steps:.0f} steps, {pos:.6f} mm, {spd:.2f} mm/s")
             else:
                 pos = dev.get_position(Units.ANGLE_DEGREES)
                 spd = dev.settings.get(BinarySettings.TARGET_SPEED, Units.ANGULAR_VELOCITY_DEGREES_PER_SECOND)
                 self.position.emit(int(address), float(steps), float(pos))
                 self.speed.emit(int(address), float(spd))
-                self.log.emit(f"Address {address}: {steps:.0f} steps, {pos:.2f} deg, {spd:.2f} deg/s")
+                #self.log.emit(f"Address {address}: {steps:.0f} steps, {pos:.2f} deg, {spd:.2f} deg/s")
         except Exception as e:
             self.error.emit(f"Read position failed: {e}")
 
@@ -166,7 +166,7 @@ class ZaberStageIO(QtCore.QObject):
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.LENGTH_MILLIMETRES)
-                self.log.emit(f"Address {address} jog {delta_pos:+.6f} mm → {pos:.6f} mm")
+                self.log.emit(f"Address {address} moved {delta_pos:+.6f} mm → {pos:.6f} mm")
             else:
                 cur = float(dev.get_position(Units.ANGLE_DEGREES))
                 target = cur + float(delta_pos)
@@ -174,7 +174,7 @@ class ZaberStageIO(QtCore.QObject):
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.ANGLE_DEGREES)
-                self.log.emit(f"Address {address} jog {delta_pos:+.2f} deg → {pos:.2f} deg")
+                self.log.emit(f"Address {address} moved {delta_pos:+.2f} deg → {pos:.2f} deg")
             self.position.emit(int(address), float(steps), float(pos))
             self.moved.emit(int(address), float(pos))
         except Exception as e:
@@ -317,11 +317,11 @@ class ZaberStageIO(QtCore.QObject):
             try:
                 minpos = dev.settings.get(BinarySettings.MINIMUM_POSITION, u)
             except Exception as e:
-                self.error.emit(f"Get min limit failed: {e}")
+                #self.error.emit(f"Get min limit failed: {e}")
                 minpos = 0.0  # fail-safe
             
             maxpos = dev.settings.get(BinarySettings.MAXIMUM_POSITION, u)
-            self.log.emit(f"Address {address}: limits [{minpos:.6f}, {maxpos:.6f}] {unit}")
+            #self.log.emit(f"Address {address}: limits [{minpos:.6f}, {maxpos:.6f}] {unit}")
             self.bounds.emit(int(address), float(minpos), float(maxpos))
         except Exception as e:
             self.error.emit(f"Get limits failed: {e}")

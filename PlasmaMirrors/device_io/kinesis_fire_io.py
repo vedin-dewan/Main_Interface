@@ -129,7 +129,7 @@ class KinesisFireIO(QtCore.QObject):
             else:
                 self._set_shutter_off()
             self.connected.emit(self.serial)
-            self.log.emit(f"KSC101 connected (serial {self.serial}).")
+            self.log.emit(f"Thorlabs (KSC101) Shutter connected (serial {self.serial}).")
         except Exception as e:
             self.error.emit(f"Kinesis open failed: {e}")
             self.dev = None
