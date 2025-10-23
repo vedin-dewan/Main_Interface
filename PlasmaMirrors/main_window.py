@@ -10,6 +10,7 @@ from panels.PM_panel import PMPanel
 from panels.fire_controls_panel import FireControlsPanel
 from device_io.kinesis_fire_io import KinesisFireIO, FireConfig
 from panels.placeholder_panel import PlaceholderPanel
+from panels.device_status_panel import DeviceStatusPanel
 from panels.device_tabs_panel import DeviceTabsPanel
 from device_io.newfocus_pico_io import NewFocusPicoIO
 from panels.picomotor_panel import PicoPanel
@@ -160,7 +161,11 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
         self.status_panel = StatusPanel()
-        self.placeholder_panel = PlaceholderPanel("Placeholder")
+        # create device status panel (replaces prior placeholder)
+        try:
+            self.device_status_panel = DeviceStatusPanel(self)
+        except Exception:
+            self.device_status_panel = None
         # track background write + auto-move state so we can control Fire button
         self._info_write_pending = False
         self._pending_auto_addresses = set()
@@ -239,7 +244,12 @@ class MainWindow(QtWidgets.QMainWindow):
         # col3 (rightmost): pm_panel (top) / part1 (motor_status_panel) (bottom)
 
         # Top row (row 0)
-        grid.addWidget(self.placeholder_panel, 0, 0)
+        # left-top: Device status panel if available, otherwise fallback to placeholder
+        if getattr(self, 'device_status_panel', None) is not None:
+            grid.addWidget(self.device_status_panel, 0, 0)
+        else:
+            self.placeholder_panel = PlaceholderPanel("Placeholder")
+            grid.addWidget(self.placeholder_panel, 0, 0)
         grid.addWidget(self.overall_controls, 0, 1)
         grid.addWidget(self.fire_panel, 0, 2)
         grid.addWidget(self.pm_panel, 0, 3)
@@ -318,6 +328,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stage.homed.connect(self._on_homed)
         self.stage.bounds.connect(self._on_bounds)
         self.io_thread.start()
+
+        # If we have a device status panel, connect additional hooks
+        try:
+            if getattr(self, 'device_status_panel', None) is not None:
+                # populate on demand when device tabs are ready
+                try:
+                    QtCore.QTimer.singleShot(250, lambda: self.device_status_panel.populate(self.device_tabs, part1_rows=getattr(self, 'part1', None).rows if getattr(self, 'part1', None) is not None else None))
+                except Exception:
+                    pass
+                # forward discovered devices to the status panel for PWR updates
+                try:
+                    self.stage.discovered.connect(lambda devices: self.device_status_panel.on_zaber_discovered(devices))
+                except Exception:
+                    pass
+                # forward moving/moved events
+                try:
+                    self.stage.moving.connect(lambda addr, mv: self.device_status_panel.on_stage_moving(addr, mv))
+                except Exception:
+                    pass
+                try:
+                    self.stage.moved.connect(lambda addr, pos=None: self.device_status_panel.on_stage_moved(addr, pos))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # After Zaber opened/discovered we want to open Picomotors; hook the opened signal
         try:
@@ -796,6 +831,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # otherwise start a new per-shot sequence
                 try:
+                    # notify device status panel that a fire sequence started
+                    try:
+                        if getattr(self, 'device_status_panel', None) is not None:
+                            self.device_status_panel.on_fire_started()
+                    except Exception:
+                        pass
                     self._start_per_shot_sequence()
                 except Exception as e:
                     try: self.status_panel.append_line(f'Failed to start per-shot sequence: {e}')
@@ -1502,6 +1543,16 @@ class MainWindow(QtWidgets.QMainWindow):
                             break
             except Exception:
                 renamed_map = {}
+
+            # update device status panel with rename results (camera/spec status)
+            try:
+                if getattr(self, 'device_status_panel', None) is not None:
+                    try:
+                        self.device_status_panel.update_camera_spec_status(renamed_map)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
             # Delegate Info + SHOT_LOG composition and write to the InfoWriter (background) so the UI
             # thread remains thin. Prepare a compact payload containing only serializable fields.
