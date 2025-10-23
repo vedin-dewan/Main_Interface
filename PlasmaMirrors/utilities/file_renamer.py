@@ -146,10 +146,10 @@ def rename_shot_files(
                         os.rename(cand, newfull)
                         processed_paths.add(newfull)
                         renamed_pairs.append((cand, newfull))
-                        try:
-                            logger(f"Renamed '{os.path.basename(cand)}' → '{os.path.basename(newfull)}'")
-                        except Exception:
-                            pass
+                        # try:
+                        #     logger(f"Renamed '{os.path.basename(cand)}' → '{os.path.basename(newfull)}'")
+                        # except Exception:
+                        #     pass
                     except Exception as e:
                         try:
                             logger(f"Failed to rename '{cand}': {e}")
@@ -168,12 +168,12 @@ def rename_shot_files(
         except Exception:
             pass
 
-    if remaining:
-        for idx in sorted(remaining):
-            try:
-                logger(f"Rename: no stable file found for '{toks[idx]}' (or timed out).")
-            except Exception:
-                pass
+    # if remaining:
+    #     for idx in sorted(remaining):
+    #         try:
+    #             logger(f"Rename: no stable file found for '{toks[idx]}' (or timed out).")
+    #         except Exception:
+    #             pass
 
     if not renamed_pairs:
         try:
@@ -330,8 +330,8 @@ def save_burst_files(
                         candidates.setdefault(i, []).append(full)
                         last_size[full] = -1
                         stable_since[full] = None
-                        try: logger(f"Burst save: found candidate for token '{toks[i]}' -> {fname}")
-                        except Exception: pass
+                        # try: logger(f"Burst save: found candidate for token '{toks[i]}' -> {fname}")
+                        # except Exception: pass
                     try:
                         cur_size = os.path.getsize(full)
                     except Exception:
@@ -339,8 +339,8 @@ def save_burst_files(
                     if cur_size == last_size.get(full, -2) and cur_size >= 0:
                         if stable_since.get(full) is None:
                             stable_since[full] = now
-                            try: logger(f"Burst save: stability started for '{os.path.basename(full)}'")
-                            except Exception: pass
+                            # try: logger(f"Burst save: stability started for '{os.path.basename(full)}'")
+                            # except Exception: pass
                         elif (now - stable_since[full]) >= stable_time:
                             # Move the stable file immediately for this token (allow multiple per token)
                             try:
@@ -369,10 +369,10 @@ def save_burst_files(
                                     processed_paths.add(full)
                                 except Exception:
                                     pass
-                                try: logger(f"Burst save: moved and marked processed: {os.path.basename(full)}")
-                                except Exception: pass
-                                try: logger(f"Burst saved: {os.path.basename(full)} -> {os.path.join(os.path.basename(burst_dir), os.path.basename(dest))}")
-                                except Exception: pass
+                                # try: logger(f"Burst save: moved and marked processed: {os.path.basename(full)}")
+                                # except Exception: pass
+                                # try: logger(f"Burst saved: {os.path.basename(full)} -> {os.path.join(os.path.basename(burst_dir), os.path.basename(dest))}")
+                                # except Exception: pass
                                 moved.append((full, dest))
                                 # remove from candidates to avoid reprocessing
                                 try:

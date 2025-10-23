@@ -41,10 +41,10 @@ class PMAutoManager:
         for mg in (self.pm_panel.pm1, self.pm_panel.pm2, self.pm_panel.pm3):
             try:
                 if not getattr(mg, 'auto', None) or not mg.auto.isChecked():
-                    try:
-                        self._log(f"PM Auto: group {getattr(mg,'name',None).text() if getattr(mg,'name',None) else 'unknown'} auto unchecked; skipping")
-                    except Exception:
-                        pass
+                    # try:
+                    #     self._log(f"PM Auto: group {getattr(mg,'name',None).text() if getattr(mg,'name',None) else 'unknown'} auto unchecked; skipping")
+                    # except Exception:
+                    #     pass
                     continue
 
                 target_type = str(mg.target_type.currentText()).strip().lower() if getattr(mg, 'target_type', None) is not None else 'rectangular'
@@ -292,7 +292,7 @@ class PMAutoManager:
                             pass
                         moves.append({'address': rx_addr, 'delta': float(rx_delta), 'unit': unit_rx, 'log': log})
                     else:
-                        log = f"PM Auto: moving stage {y_addr} by {y_delta:.6f} {unit}"
+                        #log = f"PM Auto: moving stage {y_addr} by {y_delta:.6f} {unit}"
                         moves.append({'address': y_addr, 'delta': float(y_delta), 'unit': unit, 'log': log})
             except Exception:
                 continue

@@ -166,7 +166,7 @@ class ZaberStageIO(QtCore.QObject):
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.LENGTH_MILLIMETRES)
-                self.log.emit(f"Address {address} moved {delta_pos:+.6f} mm → {pos:.6f} mm")
+                #self.log.emit(f"Address {address} moved {delta_pos:+.6f} mm → {pos:.6f} mm")
             else:
                 cur = float(dev.get_position(Units.ANGLE_DEGREES))
                 target = cur + float(delta_pos)
@@ -174,7 +174,7 @@ class ZaberStageIO(QtCore.QObject):
                 dev.wait_until_idle()
                 steps = dev.get_position()
                 pos = dev.get_position(Units.ANGLE_DEGREES)
-                self.log.emit(f"Address {address} moved {delta_pos:+.2f} deg → {pos:.2f} deg")
+                #self.log.emit(f"Address {address} moved {delta_pos:+.2f} deg → {pos:.2f} deg")
             self.position.emit(int(address), float(steps), float(pos))
             self.moved.emit(int(address), float(pos))
         except Exception as e:

@@ -1532,10 +1532,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.fire_panel.set_sequence_active(True, int(self._per_shot_total))
                 except Exception:
                     pass
-                try: self.status_panel.append_line(f"Per-shot start: current={self._per_shot_current}, total={self._per_shot_total}, target={getattr(self,'_per_shot_target',None)}")
+                try: self.status_panel.append_line(f"Shot sequence start: current={self._per_shot_current}, total={self._per_shot_total}, target={getattr(self,'_per_shot_target',None)}")
                 except Exception: pass
-                try: self.status_panel.append_line("Queued first one-shot")
-                except Exception: pass
+                # try: self.status_panel.append_line("Queued first one-shot")
+                # except Exception: pass
             except Exception:
                 try: self.status_panel.append_line('Failed to queue first one-shot')
                 except Exception: pass
@@ -1623,7 +1623,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._per_shot_active = False
                 try: self._per_shot_target = None
                 except Exception: pass
-                try: self.status_panel.append_line("Per-shot sequence complete")
+                try: self.status_panel.append_line("Shot sequence complete")
                 except Exception: pass
                 # sequence fully complete (renames + info writer dispatched). Fire remains faded
                 # until all post-processing (info writes + autos) finish. Check whether we can
@@ -2068,11 +2068,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         try:
             # Diagnostic log: record that the info write completed and payload keys
-            try:
-                sn = payload.get('shotnum', None) if isinstance(payload, dict) else None
-                self.status_panel.append_line(f"InfoWriter completed for shot {sn}")
-            except Exception:
-                pass
+            # try:
+            #     sn = payload.get('shotnum', None) if isinstance(payload, dict) else None
+            #     self.status_panel.append_line(f"InfoWriter completed for shot {sn}")
+            # except Exception:
+            #     pass
             # Clear pending info-write state so UI can re-enable Fire when appropriate.
             try:
                 self._info_write_pending = False
@@ -2171,7 +2171,7 @@ class MainWindow(QtWidgets.QMainWindow):
             unit = row.info.unit
             prec = 2 if unit == "deg" else 6
             self.status_panel.append_line(
-                f"Move complete on Address {address}: {final_pos:.{prec}f} {unit} (reading back...)"
+                f"Move complete on Address {address}: {final_pos:.{prec}f} {unit}"
             )
             # Request a fresh read for this address
             try:
@@ -2447,18 +2447,13 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-    @QtCore.pyqtSlot(int, float)
-    def _on_request_move_absolute(self, address: int, target_pos: float):
-        unit = self.part1.rows[address - 1].info.unit
-        self.status_panel.append_line(f"Absolute requested → Address {address}, Target {target_pos:.6f} {unit}")
-        self.req_abs.emit(address, target_pos, unit)
 
     @QtCore.pyqtSlot(int)
     def _on_homed(self, address: int):
         row = self.part1.rows[address - 1]
         unit = getattr(row.info, 'unit')
         QtCore.QTimer.singleShot(50, lambda a=address: self.stage.read_position_speed(a, unit))
-        self.status_panel.append_line(f"Home complete on Address {address} → reading back position…")
+        self.status_panel.append_line(f"Home complete on Address {address}")
         # After homing, the hardware will report a position; schedule a short delayed
         # check to update the PM panel Act. indicator using the newly read position
         # (the read_position_speed above will trigger _on_position which updates
@@ -2481,34 +2476,40 @@ class MainWindow(QtWidgets.QMainWindow):
                         pass
         except Exception:
             pass
+    
+    @QtCore.pyqtSlot(int, float)
+    def _on_request_move_absolute(self, address: int, target_pos: float):
+        unit = self.part1.rows[address - 1].info.unit
+        self.status_panel.append_line(f"Absolute requested → Address {address}, Target {target_pos:.3f} {unit}")
+        self.req_abs.emit(address, target_pos, unit)
 
     @QtCore.pyqtSlot(int)
     def _on_request_home(self, address: int):
-        #self.status_panel.append_line(f"Home requested → Address {address}")
+        self.status_panel.append_line(f"Home requested → Address {address}")
         self.req_home.emit(address)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_move_delta(self, address: int, delta_pos: float):
         unit = self.part1.rows[address - 1].info.unit
-        #self.status_panel.append_line(f"Jog requested → Address {address}, Delta {delta_pos:+.6f} {unit}")
+        self.status_panel.append_line(f"Relative requested → Address {address}, Delta {delta_pos:+.3f} {unit}")
         self.req_jog.emit(address, delta_pos, unit)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_set_speed(self, address: int, new_spd: float):
         unit = self.part1.rows[address - 1].info.speed_unit
-        #self.status_panel.append_line(f"Set speed requested → Address {address}: {new_spd:.6f} {unit}")
+        self.status_panel.append_line(f"Set speed requested → Address {address}: {new_spd:.3f} {unit}")
         self.req_spd.emit(address, new_spd, unit)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_set_lbound(self, address: int, new_lbound: float):
         unit = self.part1.rows[address - 1].info.unit
-        #self.status_panel.append_line(f"Set lower bound requested → Address {address}: {new_lbound:.6f} {unit}")
+        self.status_panel.append_line(f"Set lower bound requested → Address {address}: {new_lbound:.3f} {unit}")
         self.req_set_lbound.emit(address, new_lbound, unit)
 
     @QtCore.pyqtSlot(int, float)
     def _on_request_set_ubound(self, address: int, new_ubound: float):
         unit = self.part1.rows[address - 1].info.unit
-        #self.status_panel.append_line(f"Set upper bound requested → Address {address}: {new_ubound:.6f} {unit}")
+        self.status_panel.append_line(f"Set upper bound requested → Address {address}: {new_ubound:.3f} {unit}")
         self.req_set_ubound.emit(address, new_ubound, unit)
     
     @QtCore.pyqtSlot(str)
@@ -2718,8 +2719,8 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             if is_home or (target_pos is not None and float(target_pos) == 0.0):
                 # Queue a home request on the Stage I/O thread
-                if not hidden:
-                    self.status_panel.append_line(f" → Queuing HOME for Address {address} (0.0)")
+                # if not hidden:
+                #     self.status_panel.append_line(f" → Queuing HOME for Address {address} (0.0)")
                 try:
                     self.req_home.emit(address)
                 except Exception:
@@ -2730,8 +2731,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         pass
             else:
                 # Queue an absolute move on the Stage I/O thread
-                if not hidden:
-                    self.status_panel.append_line(f" → Queuing move Address {address} to {float(target_pos):.6f} {unit}")
+                # if not hidden:
+                #     self.status_panel.append_line(f" → Queuing move Address {address} to {float(target_pos):.6f} {unit}")
                 try:
                     self.req_abs.emit(address, float(target_pos), unit)
                 except Exception:

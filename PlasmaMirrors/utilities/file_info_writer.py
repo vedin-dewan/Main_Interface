@@ -34,7 +34,7 @@ class InfoWriter(QtCore.QObject):
                 with open(info_full, 'w', encoding='utf-8') as fh:
                     for ln in info_lines:
                         fh.write(ln + '\n')
-                self.log.emit(f"Wrote shot info file: {info_name}")
+                #self.log.emit(f"Wrote shot info file: {info_name}")
             except Exception as e:
                 self.log.emit(f"InfoWriter: failed to write {info_name}: {e}")
         except Exception as e:
@@ -77,7 +77,7 @@ class InfoWriter(QtCore.QObject):
             try:
                 with open(shot_log_path, 'a', encoding='utf-8') as shf:
                     shf.write(line + '\n')
-                self.log.emit(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
+                #self.log.emit(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
             except Exception as e:
                 self.log.emit(f"InfoWriter: failed to append SHOT_LOG: {e}")
         except Exception as e:
@@ -272,7 +272,7 @@ class InfoWriter(QtCore.QObject):
                 with open(info_full, 'w', encoding='utf-8') as fh:
                     for ln in info_lines:
                         fh.write(ln + '\n')
-                self.log.emit(f"Wrote shot info file: {info_name}")
+                #self.log.emit(f"Wrote shot info file: {info_name}")
             except Exception as e:
                 self.log.emit(f"InfoWriter: failed to write info file: {e}")
 
@@ -293,7 +293,7 @@ class InfoWriter(QtCore.QObject):
                 shot_log_line = '\t'.join(second) + '\t' + info_ref
                 with open(shot_log_path, 'a', encoding='utf-8') as shf:
                     shf.write(shot_log_line + '\n')
-                self.log.emit(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
+                #self.log.emit(f"Updated SHOT_LOG: {os.path.basename(shot_log_path)}")
                 # Notify listeners that the Info + SHOT_LOG write has completed
                 try:
                     payload_out = dict(payload) if isinstance(payload, dict) else {}
