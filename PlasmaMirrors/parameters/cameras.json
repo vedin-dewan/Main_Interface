@@ -16,5 +16,11 @@
     "Purpose": "Energy Calibration ",
     "Filters": "",
     "Serial": "17454664"
+  },
+  {
+    "Name": "BKFLY961",
+    "Purpose": "Miscroscope PM3",
+    "Filters": "ND05A",
+    "Serial": "18090961"
   }
 ]
