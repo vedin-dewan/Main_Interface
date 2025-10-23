@@ -168,13 +168,18 @@ class PMMirrorGroup(QtWidgets.QGroupBox):
             lab.setStyleSheet("color:#cfcfcf;")
             top.addWidget(lab, 0, col)
         # Row 1: actual controls aligned under labels
-        self.on_light = RoundLight(14, "#22cc66", "#2b2b2b"); self.on_light.set_on(True)
-        top.addWidget(self.on_light, 1, 0)
+            # Make the On light clickable; when off show red color
+            self.on_light = RoundLight(14, "#22cc66", "#d12b2b", clickable=True)
+            # Default: OFF on init
+            self.on_light.set_on(False)
+            self.on_light.setToolTip('On/Off (click to toggle)')
+            top.addWidget(self.on_light, 1, 0)
         self.name = QtWidgets.QLineEdit(title); self.name.setFixedWidth(180)
         top.addWidget(self.name, 1, 1)
         self.act_light = RoundLight(14, "#22cc66", "#2b2b2b")
         top.addWidget(self.act_light, 1, 2)
-        self.auto = QtWidgets.QCheckBox(); self.auto.setChecked(True)
+        # Default: Auto unchecked on init
+        self.auto = QtWidgets.QCheckBox(); self.auto.setChecked(False)
         top.addWidget(self.auto, 1, 3)
         self.dist = QtWidgets.QDoubleSpinBox(); self.dist.setDecimals(3); self.dist.setRange(0, 9999); self.dist.setValue(0.5); self.dist.setFixedWidth(80)
         top.addWidget(self.dist, 1, 4)
@@ -215,6 +220,11 @@ class PMMirrorGroup(QtWidgets.QGroupBox):
         bottom.addWidget(lab_on)
         bottom.addStretch(1)
         self.bypass = ToggleBypassButton()
+        # Default: bypass disabled until PM turned ON
+        try:
+            self.bypass.set_enabled(False)
+        except Exception:
+            pass
         bottom.addWidget(self.bypass)
 
         # Compose panel
@@ -253,6 +263,54 @@ class PMPanel(QtWidgets.QWidget):
                 # mg.bypass is a ToggleBypassButton; it is non-checkable and we manage its visual state
                 # Emit the panel-level signal on click, passing the current visual engaged state
                 mg.bypass.clicked.connect(lambda _=None, i=idx, b=mg.bypass: self.bypass_clicked.emit(i, b.is_engaged()))
+        except Exception:
+            pass
+
+        # Make the PM 'On' lights toggleable: clicking toggles ON/OFF. Rules:
+        # - If turning OFF: set light off (red), uncheck auto box, disable bypass button
+        # - If turning ON: set light on (green), enable bypass button; do NOT change auto
+        try:
+            for idx, mg in enumerate((self.pm1, self.pm2, self.pm3), start=1):
+                def _make_handler(mg_ref, index):
+                    def _handler():
+                        try:
+                            # RoundLight stores its state in private _on attribute; read it
+                            currently_on = bool(getattr(mg_ref.on_light, '_on', False))
+                            if currently_on:
+                                # turn off: red + uncheck auto + disable bypass
+                                try:
+                                    mg_ref.on_light.set_off_color('#d12b2b')
+                                except Exception:
+                                    pass
+                                try:
+                                    mg_ref.on_light.set_on(False)
+                                except Exception:
+                                    pass
+                                try:
+                                    mg_ref.auto.setChecked(False)
+                                except Exception:
+                                    pass
+                                try:
+                                    mg_ref.bypass.set_enabled(False)
+                                except Exception:
+                                    pass
+                            else:
+                                # turn on: green + enable bypass; do not alter auto
+                                try:
+                                    mg_ref.on_light.set_on(True)
+                                except Exception:
+                                    pass
+                                try:
+                                    mg_ref.bypass.set_enabled(True)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                    return _handler
+                try:
+                    mg.on_light.clicked.connect(_make_handler(mg, idx))
+                except Exception:
+                    pass
         except Exception:
             pass
 
