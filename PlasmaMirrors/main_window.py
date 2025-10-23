@@ -183,6 +183,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self.device_status_panel = DeviceStatusPanel(self)
         except Exception:
             self.device_status_panel = None
+        # connect device_tabs change signals to repopulate the status panel now that it exists
+        try:
+            if getattr(self, 'device_status_panel', None) is not None:
+                try:
+                    self.device_tabs.stages_changed.connect(lambda new: self.device_status_panel.populate(self.device_tabs))
+                except Exception:
+                    pass
+                try:
+                    self.device_tabs.cameras_changed.connect(lambda new: self.device_status_panel.populate(self.device_tabs))
+                except Exception:
+                    pass
+                try:
+                    self.device_tabs.spectrometers_changed.connect(lambda new: self.device_status_panel.populate(self.device_tabs))
+                except Exception:
+                    pass
+        except Exception:
+            pass
         # track background write + auto-move state so we can control Fire button
         self._info_write_pending = False
         self._pending_auto_addresses = set()
