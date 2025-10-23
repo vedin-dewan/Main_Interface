@@ -166,6 +166,14 @@ class PMMirrorGroup(QtWidgets.QGroupBox):
         for col, text in enumerate(headers):
             lab = QtWidgets.QLabel(text)
             lab.setStyleSheet("color:#cfcfcf;")
+            # keep reference to first header label so we can toggle its text between On/Off
+            if col == 0:
+                self.on_header_label = lab
+                # show Off initially
+                try:
+                    lab.setText('Off')
+                except Exception:
+                    pass
             top.addWidget(lab, 0, col)
         # Row 1: actual controls aligned under labels
             # Make the On light clickable; when off show red color
@@ -294,6 +302,12 @@ class PMPanel(QtWidgets.QWidget):
                                     mg_ref.bypass.set_enabled(False)
                                 except Exception:
                                     pass
+                                # update header label
+                                try:
+                                    if getattr(mg_ref, 'on_header_label', None) is not None:
+                                        mg_ref.on_header_label.setText('Off')
+                                except Exception:
+                                    pass
                             else:
                                 # turn on: green + enable bypass; do not alter auto
                                 try:
@@ -302,6 +316,12 @@ class PMPanel(QtWidgets.QWidget):
                                     pass
                                 try:
                                     mg_ref.bypass.set_enabled(True)
+                                except Exception:
+                                    pass
+                                # update header label
+                                try:
+                                    if getattr(mg_ref, 'on_header_label', None) is not None:
+                                        mg_ref.on_header_label.setText('On')
                                 except Exception:
                                     pass
                         except Exception:
