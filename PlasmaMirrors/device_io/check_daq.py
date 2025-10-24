@@ -1,4 +1,4 @@
-# save as check_daq.py and run in the same Python environment you use for the app
+
 import nidaqmx
 from nidaqmx.system import System
 
