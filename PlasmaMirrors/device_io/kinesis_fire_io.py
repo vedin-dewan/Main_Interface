@@ -43,8 +43,8 @@ class FireConfig:
     poll_period_s: float = 0.02                   # ~20 ms
     start_enabled: bool = False                   # start with shutter enabled?
     # Single-shot train timing (applies ONLY to Single mode, N in succession)
-    pulse_ms: int = 200                           # high time per shot
-    gap_ms: int = 200                             # low time between shots
+    pulse_ms: int = 100                           # high time per shot
+    gap_ms: int = 100                             # low time between shots
     single_waits_for_edge: bool = True            # if True: start train at next falling edge
 
 
