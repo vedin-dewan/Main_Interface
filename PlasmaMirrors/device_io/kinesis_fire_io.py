@@ -442,7 +442,7 @@ class KinesisFireIO(QtCore.QObject):
             if val is None:
                 self._write_outputs(1, 0, 0)  # safe default
             else:
-                self._write_outputs(1, 1 - val, 1 - val)
+                self._write_outputs(1 - val, 1 - val, 1 - val)
 
         elif self._mode == "single":
             self._set_mode_internal("triggered")
